@@ -17,7 +17,7 @@ import duckdb
 # Paths
 # ---------------------------------------------------------------------
 
-# src/make_cohort.py
+# src/01_make_cohort.py
 import duckdb
 from src.config import (
     PROJECT_ROOT,
