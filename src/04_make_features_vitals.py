@@ -42,7 +42,7 @@ def main() -> None:
 
     con = duckdb.connect(str(DB_PATH))
     con.execute(f"SET temp_directory='{TMP_DIR.as_posix()}';")
-    con.execute("SET memory_limit='4GB';")
+    con.execute("SET memory_limit='8GB';")
 
     # Views
     con.execute(f"""
