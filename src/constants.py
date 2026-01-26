@@ -46,3 +46,10 @@ LAB_ITEMIDS_V0_DOC = {
 
 # HbA1c itemid (baseline historical covariate)
 HBA1C_ITEMID = 50852
+
+# General / anthropometrics from chartevents
+GENERAL_ITEMIDS = {
+    "admission_weight_kg": [226512],  # Admission Weight (Kg)
+    "height_cm": [226730],            # Height (cm)
+}
+
