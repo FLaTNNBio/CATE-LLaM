@@ -228,3 +228,9 @@ hosp/
 mimic/
 **.csv.gz
 **.csv.gz.part
+
+# Dataset and results csvs
+*.csv
+*.tsv
+*.parquet
+*.json
