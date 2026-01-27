@@ -35,6 +35,8 @@ class HGBConfig:
     l2_regularization: float = 0.0
     random_state: int = 42
 
+# ======== Classifier pipeline ======== #
+
 def make_hgb_pipeline(
     num_cols: list[str],
     cat_cols: list[str],
@@ -65,6 +67,43 @@ def make_hgb_pipeline(
     )
 
     return Pipeline([("pre", pre), ("clf", clf)])
+
+# ======== Regressor pipeline ======== #
+
+from sklearn.ensemble import HistGradientBoostingRegressor
+
+def make_hgb_regressor_pipeline(
+    num_cols: list[str],
+    cat_cols: list[str],
+    cfg: HGBConfig
+) -> Pipeline:
+    """
+    Pipeline that:
+      - leaves numeric as-is (NaN allowed)
+      - one-hot encodes categoricals (missing treated as its own category)
+      - fits HGBRegressor (for continuous targets like DR pseudo-outcome)
+    """
+    pre = ColumnTransformer(
+        transformers=[
+            ("num", "passthrough", num_cols),
+            ("cat", OneHotEncoder(handle_unknown="ignore", sparse_output=False), cat_cols),
+        ],
+        remainder="drop",
+        verbose_feature_names_out=False,
+    )
+
+    reg = HistGradientBoostingRegressor(
+        max_depth=cfg.max_depth,
+        max_iter=cfg.max_iter,
+        learning_rate=cfg.learning_rate,
+        min_samples_leaf=cfg.min_samples_leaf,
+        l2_regularization=cfg.l2_regularization,
+        random_state=cfg.random_state,
+    )
+
+    return Pipeline([("pre", pre), ("reg", reg)])
+
+# ======== Utility functions ======== #
 
 def clip_ps(ps: np.ndarray, lo: float, hi: float) -> np.ndarray:
     return np.clip(ps, lo, hi)
