@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional, Sequence
 
 @dataclass(frozen=True)
@@ -22,4 +22,4 @@ class BaselineConfig:
     n_folds: int = 5
 
     # feature control
-    drop_cols: Optional[Sequence[str]] = None  # extra cols to drop if needed
+    drop_cols: Optional[Sequence[str]] = field(default_factory=lambda: ["has_hba1c_1"])  # extra cols to drop if needed
