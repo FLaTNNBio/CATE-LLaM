@@ -24,6 +24,8 @@ from src.baseline.summary import (
     save_json,
 )
 
+from src.config import get_config, CONFIGS
+
 # ---------------------------
 # ATO (overlap) weights
 # ---------------------------
@@ -197,8 +199,9 @@ def compute_and_save_summary(
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--data", required=True, help="Path to analytic_v0_extended_prepared.parquet")
-    ap.add_argument("--out_dir", default="artifacts", help="Directory for outputs")
+    ap.add_argument("--dataset", required=True, choices=list(CONFIGS.keys()), default="rbc_v1", help="Which dataset config to use")
+    ap.add_argument("--data", required=False, help="Path to analytic_v0_extended_prepared.parquet")
+    ap.add_argument("--out_dir", help="Directory for outputs")
     ap.add_argument("--n_boot_iptw", type=int, default=100)
     ap.add_argument("--n_boot_aipw", type=int, default=100)
     ap.add_argument("--scope", choices=["test", "full", "both"], default="test",
@@ -207,6 +210,12 @@ def main():
                     help="How to obtain PS on full: train_fit uses PS model fit on train; crossfit refits via CV (slower, cleaner).")
 
     args = ap.parse_args()
+
+    cfg = get_config(args.dataset)
+    if args.data is None:
+        args.data = cfg.data_path
+    if args.out_dir is None:
+        args.out_dir = cfg.out_dir
 
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -217,7 +226,6 @@ def main():
     print("features file:", src.baseline.features.__file__)
 
     # Config and data
-    cfg = BaselineConfig()
     df = pd.read_parquet(args.data)
 
     # Feature list

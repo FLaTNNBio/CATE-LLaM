@@ -13,17 +13,25 @@ from src.baseline.features import default_feature_columns, coerce_numeric_column
 from src.baseline.summary import save_json
 
 from src.cate.dr_learner import DRLearner, DRLearnerConfig
+from src.config import get_config, CONFIGS
 
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--data", required=True, help="Path to analytic_v0_extended_prepared.parquet")
-    ap.add_argument("--out_dir", default="artifacts/cate", help="Output directory")
+    ap.add_argument("--data", required=False, help="Path to analytic_v0_extended_prepared.parquet")
+    ap.add_argument("--dataset", choices=list(CONFIGS.keys()), default="rbc_v1", help="Which dataset config to use")
+    ap.add_argument("--out_dir",  help="Output directory")
     ap.add_argument("--n_folds", type=int, default=5, help="Override cross-fitting folds (default: cfg.n_folds)")
     ap.add_argument("--seed", type=int, default=42, help="Override random seed (default: cfg.random_state)")
     args = ap.parse_args()
 
-    cfg = BaselineConfig()
+    cfg = get_config(args.dataset)
+
+    if args.data is None:
+        args.data = cfg.data_path
+    if args.out_dir is None:
+        args.out_dir = cfg.out_dir
+
     seed = cfg.random_state if args.seed is None else int(args.seed)
     n_folds = cfg.n_folds if args.n_folds is None else int(args.n_folds)
 
@@ -142,3 +150,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+

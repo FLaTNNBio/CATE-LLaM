@@ -29,6 +29,8 @@ from src.baseline.features import default_feature_columns, coerce_numeric_column
 from src.baseline.models import HGBConfig, make_hgb_pipeline
 from src.baseline.summary import save_json
 
+from src.config import get_config, CONFIGS
+
 from src.cate.policy import (
     policy_from_tau,
     dr_policy_value,
@@ -38,16 +40,25 @@ from src.cate.policy import (
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--data", required=True, help="Path to analytic_v0_extended_prepared.parquet")
-    ap.add_argument("--tau_pred", required=True, help="Path to artifacts/cate/dr_tau_test.parquet")
-    ap.add_argument("--out_dir", default="artifacts/cate", help="Output directory")
+    ap.add_argument("--dataset", choices=list(CONFIGS.keys()), default="rbc_v1", help="Which dataset config to use")
+    ap.add_argument("--data", required=False, help="Path to analytic_v0_extended_prepared.parquet")
+    ap.add_argument("--tau_pred", required=False, help="Path to artifacts/cate/dr_tau_test.parquet")
+    ap.add_argument("--out_dir", help="Output directory")
     ap.add_argument("--policy", choices=["tau_gt_0", "top_frac"], default="tau_gt_0")
     ap.add_argument("--top_frac", type=float, default=0.2, help="Top fraction to treat if policy=top_frac")
     ap.add_argument("--n_boot", type=int, default=100)
     ap.add_argument("--seed", type=int, default=42)
     args = ap.parse_args()
 
-    cfg = BaselineConfig()
+    cfg = get_config(args.dataset)
+
+    if args.data is None:
+        args.data = cfg.data_path
+    if args.out_dir is None:
+        args.out_dir = cfg.out_dir
+    if args.tau_pred is None:
+        args.tau_pred = cfg.out_dir + "/dr_tau_test.parquet"
+
     seed = int(args.seed)
 
     out_dir = Path(args.out_dir)
