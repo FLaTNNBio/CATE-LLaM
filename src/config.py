@@ -40,3 +40,16 @@ def register_parquet_view(con, view_name: str = "cohort", parquet_path: Path = C
     SELECT * FROM read_parquet('{parquet_path.as_posix()}');
     """)
 
+
+# Import baseline configs for different datasets
+from src.baseline.config import VASO_V0, RBC_V1_FIXED
+
+CONFIGS = {
+    "vaso_v0": VASO_V0,
+    "rbc_v1": RBC_V1_FIXED,
+}
+
+def get_config(dataset_key: str):
+    if dataset_key not in CONFIGS:
+        raise ValueError(f"Unknown dataset_key={dataset_key}. Options: {list(CONFIGS)}")
+    return CONFIGS[dataset_key]
