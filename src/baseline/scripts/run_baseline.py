@@ -135,6 +135,8 @@ def compute_and_save_summary(
     smd_iptw.to_csv(smd_iptw_path, index=False)
     smd_ato.to_csv(smd_ato_path, index=False)
 
+    print(f"Saved SMD IPTW -> {smd_iptw_path}")
+
     # summary dict
     summary = {
         "scope": name,
@@ -159,6 +161,8 @@ def compute_and_save_summary(
     # IPTW and AIPW bootstrap CIs
     # -----------
     # Bootstrap: we repeat the entire estimation procedure on bootstrap samples
+
+    print(f"Computing bootstrap CIs (IPTW: {n_boot_iptw}, AIPW: {n_boot_aipw})...")
 
     # IPTW bootstrap
     ci_iptw = bootstrap_ate_iptw(
@@ -190,8 +194,12 @@ def compute_and_save_summary(
         wb = trim_weights(wb, *weight_trim_q)
         reps_ato[b] = ate_weighted(Yb, Tb, wb)
 
+    print("Bootstrap CIs computed.")
+
     ci_ato = {"type": "ato_bootstrap", "n_boot": int(n_boot_iptw), "alpha": 0.05, "ci": ci_from_bootstrap(reps_ato)}
     summary["bootstrap_ci"] = {"iptw": ci_iptw, "aipw": ci_aipw, "ato": ci_ato}
+
+    print(f"Completed summary for scope: {name}")
 
     return summary
 
@@ -307,6 +315,9 @@ def main():
 
     summaries = {}
 
+    print("Computing summaries...")
+    print(f"Scope: {args.scope}")
+
     if args.scope in ("test", "both"):
         summaries["test"] = compute_and_save_summary(
             name="test",
@@ -340,46 +351,50 @@ def main():
             seed=cfg.random_state,
         )
 
-        # Payload: Add to summary also META info
-        payload = {
-            "meta": {
-                "data": str(args.data),
-                "n_total": int(len(df)),
-                "n_train": int(len(train_idx)),
-                "n_test": int(len(test_idx)),
-                "n_num_features": int(len(num_cols)),
-                "n_cat_features": int(len(cat_cols)),
-                "ps_clip_range": {"lo": float(ps_clip_range[0]), "hi": float(ps_clip_range[1])},
-                "weight_trim_quantiles": {"q_lo": float(weight_trim_q[0]), "q_hi": float(weight_trim_q[1])},
-                "n_folds_aipw": int(cfg.n_folds),
-                "scope": args.scope,
-                "full_ps_mode": args.full_ps,
-            },
-            "summaries": summaries,
-        }
+    print("Computed full data summary.")
+    print(f"Full data size: {len(X)} samples.")
+    print("Preparing Payload...")
 
-        # Print test results summary
-        if "test" in summaries:
-            pe = summaries["test"]["point_estimates"]
-            print("=== TEST RESULTS ===")
-            print(f"ATE IPTW : {pe['ate_iptw']:.4f} | ESS: {ess_iptw:.1f}")
-            print(f"ATE ATO  : {pe['ate_ato']:.4f} | ESS: {ess_ato:.1f}")
-            print(f"ATE AIPW : {pe['ate_aipw']:.4f}")
+    # Payload: Add to summary also META info
+    payload = {
+        "meta": {
+            "data": str(args.data),
+            "n_total": int(len(df)),
+            "n_train": int(len(train_idx)),
+            "n_test": int(len(test_idx)),
+            "n_num_features": int(len(num_cols)),
+            "n_cat_features": int(len(cat_cols)),
+            "ps_clip_range": {"lo": float(ps_clip_range[0]), "hi": float(ps_clip_range[1])},
+            "weight_trim_quantiles": {"q_lo": float(weight_trim_q[0]), "q_hi": float(weight_trim_q[1])},
+            "n_folds_aipw": int(cfg.n_folds),
+            "scope": args.scope,
+            "full_ps_mode": args.full_ps,
+        },
+        "summaries": summaries,
+    }
 
-        # Save JSON summary
-        json_path = out_dir / "baseline_summary_recap.json"
-        save_json(json_path, payload)
-        print(f"Saved baseline summary -> {json_path}")
+    # Print test results summary
+    if "test" in summaries:
+        pe = summaries["test"]["point_estimates"]
+        print("=== TEST RESULTS ===")
+        print(f"ATE IPTW : {pe['ate_iptw']:.4f} | ESS: {ess_iptw:.1f}")
+        print(f"ATE ATO  : {pe['ate_ato']:.4f} | ESS: {ess_ato:.1f}")
+        print(f"ATE AIPW : {pe['ate_aipw']:.4f}")
+
+    # Save JSON summary
+    json_path = out_dir / "baseline_summary_recap.json"
+    save_json(json_path, payload)
+    print(f"Saved baseline summary -> {json_path}")
 
 
 if __name__ == "__main__":
     main()
     # How to run:
-    # python -m src.baseline.scripts.run_baseline --data <path_to_data.parquet> [--out_dir <output_directory>] [--scope test|full|both]
+    # python -m src.baseline.scripts.run_baseline --dataset <name_of_dataset> [--data <path_to_data.parquet>] [--out_dir <output_directory>] [--scope test|full|both]
     # Scope:
     #   test: compute summary only on test set
     #   full: compute summary only on full dataset
     #   both: compute summary on both test set and full dataset
     #
     # Example:
-    # python -m src.baseline.scripts.run_baseline --data "data/analytic_v0_extended_prepared.parquet" --out_dir artifacts/baseline --scope both
+    # python -m src.baseline.scripts.run_baseline --dataset rbc_v1 --out_dir artifacts/baseline --scope both
