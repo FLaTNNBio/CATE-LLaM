@@ -42,7 +42,7 @@ VASO_V0 = BaselineConfig(
 )
 
 RBC_V1_FIXED = BaselineConfig(
-    data_path="data/analytic/analytic_rbc_v1_fixed.parquet",
+    data_path="data/analytic/analytic_rbc_v1_f.parquet",
     id_col="stay_id",
     subject_col="subject_id",
     treatment_col="t_rbc_3h",
