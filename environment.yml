@@ -1,0 +1,19 @@
+name: cate-mimic
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - duckdb>=1.0.0
+  - pandas>=2.1
+  - pyarrow>=15
+  - polars>=0.20
+  - numpy
+  - scipy
+  - scikit-learn>=1.4
+  - jupyterlab
+  - ipykernel
+  - tqdm
+  - matplotlib
+  - pip
+  - pip:
+      - pyreadr
