@@ -48,7 +48,7 @@ RBC_V1_FIXED = BaselineConfig(
     treatment_col="t_rbc_3h",
     outcome_col="y_hosp_mort",
     # Empty for now
-    drop_cols=[],
+    drop_cols=["elig_hb_threshold", "treat_window_hours", "elig_within_hours"], # "t0_hb", "hemoglobin", "has_lactate", "bicarbonate", "potassium"],
     # Same weighting settings initially used in RBC analyses
     ps_clip=(0.01, 0.99),
     weight_trim_quantiles=(0.01, 0.99),
