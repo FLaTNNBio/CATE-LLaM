@@ -31,7 +31,8 @@ INPUTEVENTS = ICU_DIR / "inputevents.csv.gz"
 ADMISSIONS = HOSP_DIR / "admissions.csv.gz"
 
 # Design parameters
-HB_THRESHOLD = 7.5
+MAX_HB_THRESHOLD = 8.5
+MIN_HB_THRESHOLD = 7.5  # for sanity checks
 ELIG_WITHIN_HOURS = 48
 BASELINE_LOOKBACK_HOURS = 6
 TREAT_WINDOW_HOURS = 3
@@ -155,7 +156,8 @@ def main() -> None:
         AND le.valuenum IS NOT NULL
         AND le.charttime >= c.intime
         AND le.charttime <  c.intime + INTERVAL '{ELIG_WITHIN_HOURS}' HOUR
-        AND le.valuenum < {HB_THRESHOLD}
+        AND le.valuenum >= {MIN_HB_THRESHOLD}
+        AND le.valuenum <= {MAX_HB_THRESHOLD}
     ),
     ranked AS (
       SELECT *,
@@ -343,7 +345,8 @@ def main() -> None:
       t0.t0_hb,
 
       -- design params (explicit constants)
-      {HB_THRESHOLD}::DOUBLE AS elig_hb_threshold,
+      {MIN_HB_THRESHOLD}::DOUBLE AS min_elig_hb_threshold,
+      {MAX_HB_THRESHOLD}::DOUBLE AS max_elig_hb_threshold,
       {ELIG_WITHIN_HOURS}::INTEGER AS elig_within_hours,
       {TREAT_WINDOW_HOURS}::INTEGER AS treat_window_hours,
 
