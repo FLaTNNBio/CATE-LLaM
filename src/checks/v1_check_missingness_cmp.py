@@ -24,7 +24,7 @@ def count_missingness(df: pd.DataFrame) -> pd.DataFrame:
 
 
 if __name__ == "__main__":
-    path = ANALYTIC_DIR / "analytic_rbc_v1.parquet"
+    path = ANALYTIC_DIR / "analytic_rbc_v1_f.parquet"
     path_fixed = ANALYTIC_DIR / "analytic_rbc_v1_fixed.parquet"
 
     df_v1 = pd.read_parquet(path)
