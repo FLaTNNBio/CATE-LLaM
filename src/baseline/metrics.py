@@ -75,6 +75,14 @@ def weighted_var(x: np.ndarray, w: np.ndarray) -> float:
     return np.sum(w * (x - mu) ** 2) / (np.sum(w) + 1e-12)
 
 def smd_unweighted(x_t: np.ndarray, x_c: np.ndarray) -> float:
+    # keep only finite values (drop nan/inf)
+    x_t = x_t[np.isfinite(x_t)]
+    x_c = x_c[np.isfinite(x_c)]
+
+    # if either group has no usable values, SMD is undefined
+    if x_t.size == 0 or x_c.size == 0:
+        return np.nan
+
     m1, m0 = np.nanmean(x_t), np.nanmean(x_c)
     v1, v0 = np.nanvar(x_t), np.nanvar(x_c)
     denom = np.sqrt(0.5 * (v1 + v0) + 1e-12)
