@@ -210,8 +210,8 @@ def main():
     ap.add_argument("--dataset", required=True, choices=list(CONFIGS.keys()), default="rbc_v1", help="Which dataset config to use")
     ap.add_argument("--data", required=False, help="Path to analytic_v0_extended_prepared.parquet")
     ap.add_argument("--out_dir", help="Directory for outputs")
-    ap.add_argument("--n_boot_iptw", type=int, default=100)
-    ap.add_argument("--n_boot_aipw", type=int, default=100)
+    ap.add_argument("--n_boot_iptw", type=int, default=20)
+    ap.add_argument("--n_boot_aipw", type=int, default=20)
     ap.add_argument("--scope", choices=["test", "full", "both"], default="test",
                     help="Compute summary on test set, full dataset, or both.")
     ap.add_argument("--full_ps", choices=["train_fit", "crossfit"], default="train_fit",
