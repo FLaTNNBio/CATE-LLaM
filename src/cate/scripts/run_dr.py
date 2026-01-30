@@ -1,12 +1,9 @@
-from __future__ import annotations
-
 import argparse
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
-from src.baseline.config import BaselineConfig
 from src.baseline.models import HGBConfig, make_hgb_pipeline
 from src.baseline.split import split_by_subject
 from src.baseline.features import default_feature_columns, coerce_numeric_columns
@@ -122,6 +119,8 @@ def main():
             "seed": int(seed),
             "ps_clip": {"lo": float(cfg.ps_clip[0]), "hi": float(cfg.ps_clip[1])},
             "dropped_cols": list(cfg.drop_cols) if cfg.drop_cols is not None else [],
+            "treatment": cfg.treatment_col,
+            "outcome": cfg.outcome_col,
         },
         "phi_summary_train_oof": {
             "mean": art.phi_mean,
