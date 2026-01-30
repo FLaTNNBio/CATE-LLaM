@@ -49,9 +49,23 @@ RBC_V1_FIXED = BaselineConfig(
     outcome_col="y_hosp_mort",
     # Empty for now
     drop_cols=["elig_hb_threshold","max_elig_hb_threshold",
-               "min_elig_hb_threshold", "treat_window_hours", "elig_within_hours"], # "t0_hb", "hemoglobin", "has_lactate", "bicarbonate", "potassium"],
+               "min_elig_hb_threshold", "treat_window_hours",
+               "elig_within_hours", "y_hosp_mort", "t_rbc_3h", "hadm_id", "intime"], # "t0_hb", "hemoglobin", "has_lactate", "bicarbonate", "potassium"],
     # Same weighting settings initially used in RBC analyses
     ps_clip=(0.01, 0.99),
     weight_trim_quantiles=(0.01, 0.99),
     out_dir="artifacts/cate/rbc_v1_fixed"
+)
+
+RESP_V1 = BaselineConfig(
+    data_path="data/analytic/analytic_resp_v1_clean.parquet",
+    id_col="stay_id",
+    subject_col="subject_id",
+    treatment_col="t_hfnc",
+    outcome_col="y_intub_48h",
+    drop_cols=["intime", "t0_time","t0_support", "n_hfnc_2h", "n_niv_2h", "y_hosp_mort",
+               "stay_id", "subject_id", "hadm_id", "y_intub_48h", "t_hfnc", "o2_flow"],
+    ps_clip=(0.01, 0.99),
+    weight_trim_quantiles=(0.01, 0.99),
+    out_dir="artifacts/cate/resp_v1"
 )
