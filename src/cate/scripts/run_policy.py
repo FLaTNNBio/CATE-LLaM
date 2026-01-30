@@ -34,7 +34,7 @@ from src.cate.policy import (
     policy_from_tau,
     dr_policy_value,
     bootstrap_policy_value,
-    PolicyValueConfig, threshold_curve,
+    PolicyValueConfig, threshold_curve, POLICIES,
 )
 
 def main():
@@ -43,7 +43,7 @@ def main():
     ap.add_argument("--data", required=False, help="Path to analytic_<type>_<ver>.parquet")
     ap.add_argument("--tau_pred", required=False, help="Path to <path/to/dr_tau_test.parquet>")
     ap.add_argument("--out_dir", help="Output directory")
-    ap.add_argument("--policy", choices=["tau_gt_0", "top_frac"], default="tau_gt_0")
+    ap.add_argument("--policy", choices=POLICIES, help="Policy type to evaluate")
     ap.add_argument("--top_frac", type=float, default=0.2, help="Top fraction to treat if policy=top_frac")
     ap.add_argument("--n_boot", type=int, default=50)
     ap.add_argument("--seed", type=int, default=42)
@@ -57,6 +57,8 @@ def main():
         args.out_dir = cfg.out_dir
     if args.tau_pred is None:
         args.tau_pred = cfg.out_dir + "/dr_tau_test.parquet"
+    if args.policy is None:
+        args.policy = cfg.policy
 
     seed = int(args.seed)
 
@@ -200,6 +202,7 @@ def main():
         thresholds=thresholds,
         n_boot=args.n_boot,
         seed=seed,
+        direction=cfg.tau_direction
     )
 
     curve.to_csv(out_dir / "policy_threshold_curve.csv", index=False)
