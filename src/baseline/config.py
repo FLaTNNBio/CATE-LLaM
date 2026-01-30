@@ -30,6 +30,12 @@ class BaselineConfig:
     # feature control
     drop_cols: Optional[Sequence[str]] = field(default_factory=list)
 
+    # tau direction
+    tau_direction: str = "lte"  # "gte" or "lte"
+
+    # Policy Tau
+    policy: str = "tau_gt_0" # ["tau_gt_0", "tau_lt_0", "top_frac_benefit"]
+
 
 VASO_V0 = BaselineConfig(
     data_path="data/analytic/analytic_v0.parquet",
@@ -67,5 +73,7 @@ RESP_V1 = BaselineConfig(
                "stay_id", "subject_id", "hadm_id", "y_intub_48h", "t_hfnc", "o2_flow"],
     ps_clip=(0.01, 0.99),
     weight_trim_quantiles=(0.05, 0.95),
-    out_dir="artifacts/cate/resp_v1"
+    out_dir="artifacts/cate/resp_v1",
+    tau_direction="lte",
+    policy="tau_lt_0"
 )
