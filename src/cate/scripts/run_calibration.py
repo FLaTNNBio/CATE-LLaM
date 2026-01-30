@@ -1,4 +1,5 @@
 import argparse
+import os
 
 from src.cate.calibration import cate_calibration_table, CalibrationConfig
 import pandas as pd
@@ -14,8 +15,8 @@ args = ap.parse_args()
 
 cfg = get_config(args.dataset)
 
-if args.data is None:
-    args.data = cfg.data_path
+if args.dataset is None:
+    args.dataset = cfg.data_path
 if args.out_dir is None:
     args.out_dir = cfg.out_dir
 if args.data is None:
@@ -35,5 +36,7 @@ tab = cate_calibration_table(
 print("CATE calibration table (ATO weights):")
 print(tab)
 
-tab.to_csv("artifacts/cate/calibration_ato_deciles.csv", index=False)
-print("Saved calibration table to artifacts/cate/calibration_ato_deciles.csv")
+out_path = os.path.join(args.out_dir, "calibration_ato_deciles.csv")
+os.makedirs(args.out_dir, exist_ok=True)
+tab.to_csv(out_path, index=False)
+print(f"Saved calibration table to {out_path}")
