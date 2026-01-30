@@ -20,6 +20,8 @@ Output:
     
 """
 
+POLICIES = ["tau_gt_0", "tau_lt_0", "top_frac_benefit"]
+
 from dataclasses import dataclass
 from typing import Any
 
@@ -32,30 +34,32 @@ def _clip_ps(ps: np.ndarray, lo: float, hi: float) -> np.ndarray:
     return np.clip(ps, lo, hi)
 
 
-def policy_from_tau(
-    tau_hat: np.ndarray,
-    kind: str = "tau_gt_0",
-    top_frac: float = 0.2,
-) -> np.ndarray:
+def policy_from_tau(tau_hat: np.ndarray, kind: str="tau_lt_0", top_frac: float=0.2) -> np.ndarray:
     """
     Build a deterministic treatment policy pi(x) in {0,1} from tau_hat.
 
     kind:
       - "tau_gt_0": treat if tau_hat > 0
-      - "top_frac": treat only top fraction by tau_hat (e.g., top 20%)
+      - "tau_lt_0": treat if tau_hat < 0
+      - "top_frac_benefit": treat top fraction (most negative tau_hat)
     """
     tau_hat = np.asarray(tau_hat, dtype=float)
+
+    if kind == "tau_lt_0":
+        return (tau_hat < 0.0).astype(int)
 
     if kind == "tau_gt_0":
         return (tau_hat > 0.0).astype(int)
 
-    if kind == "top_frac":
+    if kind == "top_frac_benefit":
+        # treat chi ha tau più negativo (massimo beneficio)
         if not (0.0 < top_frac < 1.0):
             raise ValueError("top_frac must be in (0,1)")
-        thr = np.quantile(tau_hat, 1.0 - top_frac)
-        return (tau_hat >= thr).astype(int)
+        thr = np.quantile(tau_hat, top_frac)  # lower = more negative
+        return (tau_hat <= thr).astype(int)
 
-    raise ValueError("kind must be one of: 'tau_gt_0', 'top_frac'")
+    raise ValueError("unknown kind")
+
 
 
 @dataclass(frozen=True)
@@ -259,7 +263,6 @@ def bootstrap_policy_deltas(
 
 
 def threshold_curve(
-    *,
     tau_hat: np.ndarray,
     ps_hat: np.ndarray,
     mu1_hat: np.ndarray,
@@ -270,14 +273,17 @@ def threshold_curve(
     cfg: PolicyValueConfig,
     n_boot: int = 50,
     seed: int = 42,
-    alpha: float = 0.05,
-    refine_radius: float = 0.05,
-    refine_step: float = 0.01,
+    direction: str = "gte",  # "gte" or "lte"
 ) -> pd.DataFrame:
 
     tau_hat = np.asarray(tau_hat, dtype=float)
-    thresholds = np.asarray(thresholds, dtype=float)
 
+    def make_pi(thr: float) -> np.ndarray:
+        if direction == "gte":
+            return (tau_hat >= thr).astype(int)
+        if direction == "lte":
+            return (tau_hat <= thr).astype(int)
+        raise ValueError("direction must be 'gte' or 'lte'")
     # Baselines (point estimates)
     v_none = dr_policy_value(
         y=Y, t=t, pi=np.zeros_like(tau_hat, dtype=int),
@@ -285,94 +291,66 @@ def threshold_curve(
     )
     v_all = dr_policy_value(
         y=Y, t=t, pi=np.ones_like(tau_hat, dtype=int),
-        ps_hat=ps_hat, mu1_hat=mu1_hat, mu0_hat=mu0_hat, cfg=cfg
+        ps_hat=ps_hat, mu0_hat=mu0_hat, mu1_hat=mu1_hat, cfg=cfg
     )
 
-    def _eval_thresholds(thrs: np.ndarray) -> list[dict]:
-        rows = []
-        for thr in thrs:
-            pi_thr = (tau_hat >= thr).astype(int)
-            v_pi = dr_policy_value(
-                y=Y, t=t, pi=pi_thr,
-                ps_hat=ps_hat, mu1_hat=mu1_hat, mu0_hat=mu0_hat, cfg=cfg
-            )
-            rows.append({
-                "threshold": float(thr),
-                "treat_rate": float(np.mean(pi_thr)),
-                "value_dr": float(v_pi),
-                "delta_vs_none": float(v_pi - v_none),
-                "delta_vs_all": float(v_pi - v_all),
-            })
-        return rows
-
-    # --- coarse pass
-    res = _eval_thresholds(thresholds)
-    coarse_df = pd.DataFrame(res)
-    best_thr = float(coarse_df.loc[coarse_df["value_dr"].idxmin(), "threshold"])
-    print(f"Best threshold (coarse): {best_thr:.4f}")
-
-    # --- refine around best
-    fine = np.arange(best_thr - refine_radius, best_thr + refine_radius + 1e-12, refine_step)
-    fine_res = _eval_thresholds(fine)
-
-    # combine and dedup thresholds (keep best value_dr if duplicates)
-    out = pd.concat([coarse_df, pd.DataFrame(fine_res)], axis=0, ignore_index=True)
-    out = out.sort_values(["threshold", "value_dr"]).drop_duplicates(subset=["threshold"], keep="first").reset_index(drop=True)
-
-    best_thr2 = float(out.loc[out["value_dr"].idxmin(), "threshold"])
-    print(f"Best threshold (refined): {best_thr2:.4f}")
-    print("Starting paired bootstrap for deltas (vs none / all) ...")
-
-    # --- paired bootstrap for each threshold
-    boot_rows = []
-    for thr in out["threshold"].values:
-        pi_thr = (tau_hat >= thr).astype(int)
-        boot = bootstrap_policy_deltas(
-            y=Y, t=t, ps_hat=ps_hat, mu1_hat=mu1_hat, mu0_hat=mu0_hat,
-            pi=pi_thr, cfg=cfg, n_boot=n_boot, seed=seed, alpha=alpha
+    res = []
+    for thr in thresholds:
+        pi_policy = make_pi(float(thr))
+        v_pi = dr_policy_value(
+            y=Y, t=t, pi=pi_policy,
+            ps_hat=ps_hat, mu1_hat=mu1_hat, mu0_hat=mu0_hat, cfg=cfg
         )
-        boot_rows.append({
-            "threshold": float(thr),
-            "value_boot_mean": boot["value_pi"]["mean"],
-            "value_boot_sd": boot["value_pi"]["sd"],
-            "value_boot_ci_lo": boot["value_pi"]["ci_lo"],
-            "value_boot_ci_hi": boot["value_pi"]["ci_hi"],
-            "delta_none_mean": boot["delta_vs_none"]["mean"],
-            "delta_none_sd": boot["delta_vs_none"]["sd"],
-            "delta_none_ci_lo": boot["delta_vs_none"]["ci_lo"],
-            "delta_none_ci_hi": boot["delta_vs_none"]["ci_hi"],
-            "delta_all_mean": boot["delta_vs_all"]["mean"],
-            "delta_all_sd": boot["delta_vs_all"]["sd"],
-            "delta_all_ci_lo": boot["delta_vs_all"]["ci_lo"],
-            "delta_all_ci_hi": boot["delta_vs_all"]["ci_hi"],
-            "p_better_vs_none": boot["p_better_vs_none"],
+        res.append({
+            "threshold": round(float(thr), 4),
+            "treat_rate": round(float(np.mean(pi_policy)), 4),
+            "value_dr": round(float(v_pi), 4),
+            "delta_vs_none": round(float(v_pi - v_none), 4),
+            "delta_vs_all": round(float(v_pi - v_all), 4),
         })
 
-    boot_df = pd.DataFrame(boot_rows)
-    out = out.merge(boot_df, on="threshold", how="left")
+    out = pd.DataFrame(res).sort_values("threshold").reset_index(drop=True)
 
-    # optional rounding at the very end (safe)
-    out = out.round({
-        "threshold": 4,
-        "treat_rate": 4,
-        "value_dr": 4,
-        "delta_vs_none": 4,
-        "delta_vs_all": 4,
-        "value_boot_mean": 4,
-        "value_boot_sd": 4,
-        "value_boot_ci_lo": 4,
-        "value_boot_ci_hi": 4,
-        "delta_none_mean": 4,
-        "delta_none_sd": 4,
-        "delta_none_ci_lo": 4,
-        "delta_none_ci_hi": 4,
-        "delta_all_mean": 4,
-        "delta_all_sd": 4,
-        "delta_all_ci_lo": 4,
-        "delta_all_ci_hi": 4,
-        "p_better_vs_none": 4,
-    })
+    # best threshold (min risk)
+    best_thr = float(out.loc[out["value_dr"].idxmin(), "threshold"])
 
+    # refine around best
+    fine_thresholds = np.arange(best_thr - 0.05, best_thr + 0.051, 0.01)
+    for thr in fine_thresholds:
+        pi_policy = make_pi(float(thr))
+        v_pi = dr_policy_value(
+            y=Y, t=t, pi=pi_policy,
+            ps_hat=ps_hat, mu1_hat=mu1_hat, mu0_hat=mu0_hat, cfg=cfg
+        )
+        out = pd.concat([out, pd.DataFrame([{
+            "threshold": round(float(thr), 4),
+            "treat_rate": round(float(np.mean(pi_policy)), 4),
+            "value_dr": round(float(v_pi), 4),
+            "delta_vs_none": round(float(v_pi - v_none), 4),
+            "delta_vs_all": round(float(v_pi - v_all), 4),
+        }])], ignore_index=True)
+
+    out = out.drop_duplicates(subset=["threshold"]).sort_values("threshold").reset_index(drop=True)
+
+    # bootstrap CI per ogni threshold
+    ci_rows = []
+    for thr in out["threshold"].values:
+        pi_policy = make_pi(float(thr))
+        ci = bootstrap_policy_value(
+            y=Y, t=t, pi=pi_policy,
+            ps_hat=ps_hat, mu1_hat=mu1_hat, mu0_hat=mu0_hat,
+            n_boot=n_boot, seed=seed, cfg=cfg
+        )
+        ci_rows.append({
+            "threshold": round(float(thr), 4),
+            "value_boot_mean": round(float(ci["mean"]), 4),
+            "value_boot_sd": round(float(ci["sd"]), 4),
+            "value_boot_ci_lo": round(float(ci["ci_lo"]), 4),
+            "value_boot_ci_hi": round(float(ci["ci_hi"]), 4),
+        })
+
+    ci_df = pd.DataFrame(ci_rows)
+    out = out.merge(ci_df, on="threshold", how="left")
     return out
 
 
