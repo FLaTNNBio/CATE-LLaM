@@ -628,7 +628,6 @@ def main() -> None:
                              1.0 - COUNT(rr)::DOUBLE / COUNT(*)        AS rr_null,
                              1.0 - COUNT(spo2)::DOUBLE / COUNT(*)      AS spo2_null,
                              1.0 - COUNT(temp_c)::DOUBLE / COUNT(*)    AS temp_null,
-                             1.0 - COUNT(nibp_mean)::DOUBLE / COUNT(*)   AS map_null,
                              1.0 - COUNT(wbc)::DOUBLE / COUNT(*)       AS wbc_null
                       FROM analytic_rbc_v1_f;
                       """).fetchdf())
