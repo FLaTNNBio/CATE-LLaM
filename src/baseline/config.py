@@ -66,6 +66,6 @@ RESP_V1 = BaselineConfig(
     drop_cols=["intime", "t0_time","t0_support", "n_hfnc_2h", "n_niv_2h", "y_hosp_mort",
                "stay_id", "subject_id", "hadm_id", "y_intub_48h", "t_hfnc", "o2_flow"],
     ps_clip=(0.01, 0.99),
-    weight_trim_quantiles=(0.01, 0.99),
+    weight_trim_quantiles=(0.05, 0.95),
     out_dir="artifacts/cate/resp_v1"
 )
