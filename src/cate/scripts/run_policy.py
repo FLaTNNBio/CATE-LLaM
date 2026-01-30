@@ -23,7 +23,6 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from src.baseline.config import BaselineConfig
 from src.baseline.split import split_by_subject
 from src.baseline.features import default_feature_columns, coerce_numeric_columns
 from src.baseline.models import HGBConfig, make_hgb_pipeline
@@ -35,18 +34,18 @@ from src.cate.policy import (
     policy_from_tau,
     dr_policy_value,
     bootstrap_policy_value,
-    PolicyValueConfig,
+    PolicyValueConfig, threshold_curve,
 )
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--dataset", choices=list(CONFIGS.keys()), default="rbc_v1", help="Which dataset config to use")
-    ap.add_argument("--data", required=False, help="Path to analytic_v0_extended_prepared.parquet")
-    ap.add_argument("--tau_pred", required=False, help="Path to artifacts/cate/dr_tau_test.parquet")
+    ap.add_argument("--data", required=False, help="Path to analytic_<type>_<ver>.parquet")
+    ap.add_argument("--tau_pred", required=False, help="Path to <path/to/dr_tau_test.parquet>")
     ap.add_argument("--out_dir", help="Output directory")
     ap.add_argument("--policy", choices=["tau_gt_0", "top_frac"], default="tau_gt_0")
     ap.add_argument("--top_frac", type=float, default=0.2, help="Top fraction to treat if policy=top_frac")
-    ap.add_argument("--n_boot", type=int, default=100)
+    ap.add_argument("--n_boot", type=int, default=50)
     ap.add_argument("--seed", type=int, default=42)
     args = ap.parse_args()
 
@@ -133,7 +132,10 @@ def main():
     pi_none = np.zeros_like(pi_policy)
     pi_all = np.ones_like(pi_policy)
 
-    pvcfg = PolicyValueConfig(ps_clip=cfg.ps_clip)
+    pvcfg = PolicyValueConfig(
+        ps_clip=cfg.ps_clip,
+        ipw_trim_quantiles=None,
+    )
 
     # --- DR policy values (expected mortality under policy)
     v_none = dr_policy_value(y=Y_te, t=T_te, pi=pi_none, ps_hat=ps_hat, mu1_hat=mu1_hat, mu0_hat=mu0_hat, cfg=pvcfg)
@@ -174,8 +176,6 @@ def main():
     }
 
     out_path = out_dir / "policy_value.json"
-    save_json(out_path, results)
-    print(f"Saved policy value -> {out_path}")
 
     # headline print (lower is better for mortality)
     print("=== DR Policy Value (expected mortality; lower is better) ===")
@@ -184,6 +184,72 @@ def main():
     print(f"Policy    : {v_pi:.4f}  (treat_rate={treat_rate:.3f})")
     print(f"Δ Policy - None: {v_pi - v_none:+.4f}")
     print(f"Δ Policy - All : {v_pi - v_all:+.4f}")
+
+    print("\n Now Running Threshold Curve Evaluation...")
+
+    thresholds = np.linspace(-0.30, 0.60, 20)
+
+    curve = threshold_curve(
+        Y=Y_te,
+        t=T_te,
+        mu1_hat=mu1_hat,
+        mu0_hat=mu0_hat,
+        ps_hat=ps_hat,
+        tau_hat=tau_hat,
+        cfg=pvcfg,
+        thresholds=thresholds,
+        n_boot=args.n_boot,
+        seed=seed,
+    )
+
+    curve.to_csv(out_dir / "policy_threshold_curve.csv", index=False)
+    print(f"All threshold results saved in {out_dir / 'policy_threshold_curve.csv'}.")
+
+    curve_payload = {
+        "meta_threshold": {
+            "data": str(args.data),
+            "n": int(len(Y_te)),
+            "outcome": cfg.outcome_col,
+            "treatment": cfg.treatment_col,
+            "ps_clip": {"lo": cfg.ps_clip[0], "hi": cfg.ps_clip[1]},
+            "n_folds": cfg.n_folds,
+            "n_thresholds": int(len(thresholds)),
+            "n_boot": int(args.n_boot),
+            "seed" : seed,
+        },
+        "threshold_best": {
+            # minimize risk
+            "threshold": float(curve.loc[curve["value_dr"].idxmin(), "threshold"]),
+            "treat_rate": float(curve.loc[curve["value_dr"].idxmin(), "treat_rate"]),
+            "value_dr": float(curve["value_dr"].min()),
+        },
+    }
+
+    results["threshold_curve"] = curve_payload
+
+    save_json(out_path, results)
+    print(f"Saved policy value -> {out_path}")
+
+
+    # Plot Threshold Curve
+    try:
+        import matplotlib.pyplot as plt
+
+        plt.figure(figsize=(8, 6))
+        plt.plot(curve["threshold"], curve["value_dr"], marker='o', color='green', label='Policy Value')
+        plt.xlabel("Threshold")
+        plt.ylabel(f"Doubly Robust Policy Value ({cfg.outcome_col})")
+        plt.title("Threshold Curve for Treatment Policy")
+        plt.axhline(y=v_none, color='r', linestyle='--', label='Treat None')
+        plt.axhline(y=v_all, color='b', linestyle='--', label='Treat All')
+        plt.legend()
+        plt.grid()
+        plt.savefig(out_dir / "policy_threshold_curve.png")
+        plt.close()
+        print(f"Saved threshold curve plot -> {out_dir / 'policy_threshold_curve.png'}")
+    except ImportError:
+        print("matplotlib not installed; skipping threshold curve plot.")
+
 
 if __name__ == "__main__":
     main()
