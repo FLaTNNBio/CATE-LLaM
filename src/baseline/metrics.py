@@ -89,8 +89,22 @@ def smd_unweighted(x_t: np.ndarray, x_c: np.ndarray) -> float:
     return (m1 - m0) / denom
 
 def smd_weighted(x: np.ndarray, tau: np.ndarray, w: np.ndarray) -> float:
-    x1, x0 = x[tau == 1], x[tau == 0]
-    w1, w0 = w[tau == 1], w[tau == 0]
+    x = np.asarray(x, dtype=float)
+    tau = np.asarray(tau)
+    w = np.asarray(w, dtype=float)
+
+    x1, w1 = x[tau == 1], w[tau == 1]
+    x0, w0 = x[tau == 0], w[tau == 0]
+
+    # keep only finite pairs (value and corresponding weight)
+    mask1 = np.isfinite(x1) & np.isfinite(w1)
+    mask0 = np.isfinite(x0) & np.isfinite(w0)
+    x1, w1 = x1[mask1], w1[mask1]
+    x0, w0 = x0[mask0], w0[mask0]
+
+    # require usable data and positive total weights in both groups
+    if x1.size == 0 or x0.size == 0 or w1.sum() <= 0 or w0.sum() <= 0:
+        return np.nan
 
     m1, m0 = weighted_mean(x1, w1), weighted_mean(x0, w0)
     v1, v0 = weighted_var(x1, w1), weighted_var(x0, w0)
