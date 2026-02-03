@@ -43,6 +43,20 @@ def sanity_check():
     for i in range(0, len(df.columns), 10):
         print("  " + ", ".join(df.columns[i:i+10]))
 
+
+    # Separa “hypercapnic/COPD-like” vs “hypoxemic”
+    # Hai pH e pCO2 (anche se missing). Puoi fare:
+    # Cohort hypoxemic: pCO2 non alto e/o pH non acido (es: pH ≥ 7.30 e pCO2 ≤ 50) quando disponibili + “non COPD” se hai ICD.
+    # Cohort hypercapnic: pCO2 alto o pH basso.
+    # Per hypercapnic, NIV è spesso appropriato; HFNC può essere peggiore → ti trascina tutto verso treat-none (cioè NIV).
+    # Per ora conta quanti sono in ogni gruppo.
+    mask_hypercapnic = (df["pCO2"] > 55) | (df["ph"] < 7.30)
+    n_hypercapnic = mask_hypercapnic.sum()
+    n_hypoxemic = n_total - n_hypercapnic
+
+    print(f"- Stays classified as hypercapnic (pCO2 > 55 or pH < 7.30): {n_hypercapnic} ({n_hypercapnic / n_total:.2%})")
+    print(f"- Stays classified as hypoxemic (not hypercapnic): {n_hypoxemic} ({n_hypoxemic / n_total:.2%})")
+
     print("=== End of Sanity Check ===")
 
 if __name__ =="__main__":
