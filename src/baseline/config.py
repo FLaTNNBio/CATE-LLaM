@@ -77,3 +77,20 @@ RESP_V1 = BaselineConfig(
     tau_direction="lte",
     policy="tau_lt_0"
 )
+
+CRRT_V1 = BaselineConfig(
+    data_path="data/analytic/analytic_crrt_v1.parquet",
+    id_col="stay_id",
+    subject_col="subject_id",
+    treatment_col="treat_crrt",
+    outcome_col="y_hosp_mort",
+    drop_cols=["intime", "t0_time","t0_support", "n_hfnc_2h", "n_niv_2h", "y_hosp_mort",
+               "stay_id", "subject_id", "hadm_id", "y_intub_48h", "treat_crrt" , "o2_flow",
+               "flow_rate_l_min","crrt_mode", "crrt_kcl", "glucose"],
+    ps_clip=(0.01, 0.99),
+    weight_trim_quantiles=(0.01, 0.99),
+    out_dir="artifacts/cate/crrt_v1",
+    tau_direction="lte",
+    policy="tau_lt_0",
+    n_folds=2
+)
