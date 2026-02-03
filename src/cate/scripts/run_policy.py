@@ -39,7 +39,7 @@ from src.cate.policy import (
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--dataset", choices=list(CONFIGS.keys()), default="rbc_v1", help="Which dataset config to use")
+    ap.add_argument("--dataset", required=True, choices=list(CONFIGS.keys()), help="Which dataset config to use")
     ap.add_argument("--data", required=False, help="Path to analytic_<type>_<ver>.parquet")
     ap.add_argument("--tau_pred", required=False, help="Path to <path/to/dr_tau_test.parquet>")
     ap.add_argument("--out_dir", help="Output directory")
@@ -103,7 +103,8 @@ def main():
     te_map = pd.DataFrame({cfg.id_col: te_ids, "_pos": np.arange(len(te_ids))})
     pred2 = pred.merge(te_map, on=cfg.id_col, how="inner").sort_values("_pos")
     if len(pred2) != len(te_ids):
-        raise ValueError("tau_pred does not match the test split size (alignment by stay_id failed).")
+        raise ValueError(f"tau_pred does not match the test split size: {len(pred2)} vs {len(te_ids)}"
+                         " (alignment by stay_id failed).")
 
     tau_hat = pred2["tau_hat"].values.astype(float)
 
