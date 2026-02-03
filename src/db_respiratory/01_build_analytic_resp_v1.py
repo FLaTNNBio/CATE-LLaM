@@ -36,13 +36,13 @@ PROCEDUREEVENTS = ICU_DIR / "procedureevents.csv.gz"  # opzionale ma utile per i
 # Design parameters
 ELIG_WITHIN_HOURS = 24
 ASSIGN_WINDOW_HOURS = 2
-OUTCOME_WINDOW_HOURS = 48
+OUTCOME_WINDOW_HOURS = 24
 
 BASELINE_LOOKBACK_HOURS = 6
 TREAT_WINDOW_HOURS = 4
 
 # Grace periods for baseline extraction
-VITALS_GRACE_HOURS = 1
+VITALS_GRACE_HOURS = 0.5
 LABS_GRACE_HOURS = 1
 ANTHRO_GRACE_HOURS = 6
 
@@ -70,6 +70,8 @@ VITAL_ITEMIDS = {
     "hr": [220045],         # Heart Rate
     "rr": [220210],         # Respiratory Rate
     "spo2": [220277],       # O2 saturation pulseoxymetry
+    "fio2" : [223835],      # FiO2
+    "sofa" : [227428],      # SOFA Score
     "temp_c": [223762],     # Temperature Celsius
     "nibp_sys": [220179],   # Non Invasive Blood Pressure systolic
     "nibp_dia": [220180],   # Non Invasive Blood Pressure diastolic
@@ -98,6 +100,17 @@ LAB_ITEMIDS = {
     "pCO2": 50818,             # pCO2
     "ph": 50820                # pH
 }
+
+# Baseline inputs in inputevents (vasopressors)
+INPUT_ITEMIDS = {
+    "Vasopressors": [221289,   # 221289,229617 : Epinephrine
+                     229617,
+                     221906,   # 221906 : Norepinephrine
+                     222315,   # Vasopressin
+                     221662,   # Dopamine 221662
+                     ]
+}
+
 
 # Anthropometrics conversion (empirically: OMR exports are often lb / inches)
 LB_TO_KG = 0.453592
@@ -148,10 +161,10 @@ def main() -> None:
     SELECT * FROM read_csv_auto('{_csv(CHARTEVENTS)}', union_by_name=true);
     """)
 
-    #con.execute(f"""
-    #CREATE OR REPLACE VIEW v_inputs AS
-    #SELECT * FROM read_csv_auto('{_csv(INPUTEVENTS)}', union_by_name=true);
-    #""")
+    con.execute(f"""
+    CREATE OR REPLACE VIEW v_inputs AS
+    SELECT * FROM read_csv_auto('{_csv(INPUTEVENTS)}', union_by_name=true);
+    """)
 
     con.execute(f"""
     CREATE OR REPLACE VIEW v_adm AS
@@ -360,6 +373,24 @@ def main() -> None:
           AND p.starttime < t0.t0_time;
     """)
 
+    # -------------------------
+    # 3d) Input Events - Vasopressors (before t0)
+    # -------------------------
+
+    input_itemid_tuple = "(" + ", ".join(str(x) for x in INPUT_ITEMIDS["Vasopressors"]) + ")"
+    con.execute(f"""
+        CREATE OR REPLACE TABLE v_inputs_vaso AS
+        SELECT
+            t0.stay_id,
+            COUNT(*) AS n_vaso_pre_t0
+        FROM v_t0 t0
+        JOIN v_inputs ie
+            ON ie.stay_id = t0.stay_id
+        WHERE ie.itemid IN {input_itemid_tuple}
+            AND ie.starttime IS NOT NULL
+            AND ie.starttime < t0.t0_time
+        GROUP BY t0.stay_id;
+    """)
 
     # -------------------------
     # 4) Baseline covariates in [-6h, 0h] relative to t0 (last value pre t0)
@@ -639,6 +670,9 @@ def main() -> None:
           labs.albumin,
           labs.pCO2,
           labs.ph,
+          
+          -- inputs
+            COALESCE(i.n_vaso_pre_t0, 0) AS n_vaso_pre_t0,
         
           -- missingness indicators
           CASE WHEN labs.lactate     IS NULL THEN 0 ELSE 1 END AS has_lactate,
@@ -647,9 +681,7 @@ def main() -> None:
           CASE WHEN labs.creatinine  IS NULL THEN 0 ELSE 1 END AS has_creatinine,
           CASE WHEN labs.platelets   IS NULL THEN 0 ELSE 1 END AS has_platelets,
           CASE WHEN v.nibp_mean      IS NULL THEN 0 ELSE 1 END AS has_nibp_mean,
-          CASE WHEN v.hr             IS NULL THEN 0 ELSE 1 END AS has_hr,
-
-        
+          CASE WHEN v.hr             IS NULL THEN 0 ELSE 1 END AS has_hr
         FROM v_t0 t0
         JOIN v_treat tr ON t0.stay_id = tr.stay_id
         LEFT JOIN v_outcome_proc op ON t0.stay_id = op.stay_id
@@ -659,6 +691,7 @@ def main() -> None:
         LEFT JOIN v_base_vitals v ON t0.stay_id = v.stay_id
         LEFT JOIN v_base_temp temp ON t0.stay_id = temp.stay_id
         LEFT JOIN v_base_labs labs ON t0.stay_id = labs.stay_id
+        LEFT JOIN v_inputs_vaso i ON t0.stay_id = i.stay_id
         LEFT JOIN v_base_wbc wbc ON t0.stay_id = wbc.stay_id
         LEFT JOIN v_exclude_preintub x ON t0.stay_id = x.stay_id WHERE x.stay_id IS NULL;
     """)
