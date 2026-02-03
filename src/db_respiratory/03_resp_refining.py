@@ -116,9 +116,34 @@ def _add_has_indicators(df: pd.DataFrame, cols: list[str]) -> pd.DataFrame:
                 df[has_col] = (~df[c].isna()).astype("Int64")
     return df
 
+def remove_hypercapnic(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Optional function to remove hypercapnic patients from the dataset.
+    Hypercapnic patients are defined as those with pCO2 > 55 or pH < 7.30.
+    """
+    if "pCO2" in df.columns and "ph" in df.columns:
+        mask_hypercapnic = (df["pCO2"] > 55) | (df["ph"] < 7.30)
+        df = df[~mask_hypercapnic].copy()
+    return df
+
+def union_mort_intub(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Optional function to create a combined outcome variable that indicates
+    whether a patient was either intubated within 48 hours or died during hospitalization.
+    """
+    if "y_intub_48h" in df.columns and "y_hosp_mort" in df.columns:
+        df["y_intub_48h"] = ((df["y_intub_48h"] == 1) | (df["y_hosp_mort"] == 1)).astype("Int64")
+    return df
+
 
 def main() -> None:
     df = pd.read_parquet(IN_PATH)
+
+    # Optional: remove hypercapnic patients
+    df = remove_hypercapnic(df)
+
+    # Optional: union of mortality and intubation outcomes
+    df = union_mort_intub(df)
 
     # 1) Drop agreed columns
     df = _safe_drop(df, DROP_COLS)
