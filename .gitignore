@@ -234,3 +234,23 @@ mimic/
 *.tsv
 *.parquet
 *.json
+
+# Ignore imported models folders for comparison
+src/models/bcauss/
+
+# Ignore Model checkpoints
+*.h5
+*.ckpt
+*.pt
+*.pth
+*.bin
+*.model
+*.safetensors
+*.pkl
+
+# Ignore PNGs (for now)
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.svg
