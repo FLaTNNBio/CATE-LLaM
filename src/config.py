@@ -16,6 +16,8 @@ ANALYTIC_DIR = DATA_DIR / "analytic"
 COHORT_PARQUET = INTERMEDIATE_DIR / "cohort.parquet"
 COHORT_CLEAN_PARQUET = INTERMEDIATE_DIR / "cohort_clean.parquet"
 
+MIT_MIMIC = PROJECT_ROOT / "duckdb" / "mimic4.db"
+
 # Ensure output dirs exist
 INTERMEDIATE_DIR.mkdir(parents=True, exist_ok=True)
 ANALYTIC_DIR.mkdir(parents=True, exist_ok=True)
@@ -42,13 +44,16 @@ def register_parquet_view(con, view_name: str = "cohort", parquet_path: Path = C
 
 
 # Import baseline configs for different datasets
-from src.baseline.config import VASO_V0, RBC_V1_FIXED, RESP_V1, CRRT_V1
+from src.baseline.config import VASO_V0, RBC_V1_FIXED, RESP_V1, CRRT_V1, SEPSIS_V1, SEPSIS_V2, RBC_V2
 
 CONFIGS = {
     "vaso_v0": VASO_V0,
     "rbc_v1": RBC_V1_FIXED,
+    "rbc_v2": RBC_V2,
     "resp_v1" : RESP_V1,
     "crrt_v1" : CRRT_V1,
+    "sepsis_v1": SEPSIS_V1,
+    "sepsis_v2": SEPSIS_V2
 }
 
 def get_config(dataset_key: str):
