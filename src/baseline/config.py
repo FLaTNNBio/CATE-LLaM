@@ -73,7 +73,9 @@ RBC_V2 = BaselineConfig(
     # Empty for now
     drop_cols= [ "treat_window_hours", "y_24h_mort", "y_hosp_mort", "Fi02_bg", "lactate", "BMI",
                  "stay_id", "hadm_id", "intime", "rbc_units_proxy", "po2", "has_lactate", "chloride",
-                 "elig_within_hours", "y_hosp_mort", "t_rbc_3h",], # "t0_hb", "hemoglobin", "has_lactate", "bicarbonate", "potassium"],
+                 "elig_within_hours", "y_hosp_mort", "t_rbc_3h", "hb_threshold", "elig_hb_threshold",
+                 "max_elig_hb_threshold", "min_elig_hb_threshold"], # "t0_hb", "hemoglobin", "has_lactate",
+    # "bicarbonate", "potassium"],
     # Same weighting settings initially used in RBC analyses
     ps_clip=(0.05, 0.95),
     weight_trim_quantiles=(0.05, 0.95),
@@ -138,8 +140,9 @@ SEPSIS_V2 = BaselineConfig(
     treatment_col="treat_steroid",
     outcome_col="y_28d_mort_inhosp",
     drop_cols=["intime", "t0_time","t0_support", "y_hosp_mort", "SO2_bg",# "y_28d_mort_inhosp"
-               "enroll_end", "treat_steroid", "steroid_unparsed_events",
+               "enroll_end", "steroid_unparsed_events", "treat_steroid",
                "steroid_total_events", "hc_equiv_mg_0_24h", "lactate",
+               "baseline_lookback_hours", "elig_within_hours", "treat_window_hours",
                "stay_id", "subject_id", "hadm_id"], # "glucose"
     ps_clip=(0.01, 0.99),
     weight_trim_quantiles=(0.01, 0.99),

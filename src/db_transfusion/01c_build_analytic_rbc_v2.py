@@ -6,8 +6,6 @@
 #
 # Output: analytic/analytic_rbc_mit_v2.parquet (1 row per stay_id)
 
-from __future__ import annotations
-
 from dataclasses import dataclass
 from pathlib import Path
 import duckdb
@@ -597,6 +595,6 @@ if __name__ == "__main__":
     if not args.db:
         args.db = MIT_MIMIC
     if not args.out:
-        args.out = ANALYTIC_DIR / "analytic_sepsis_steroids_mit_v2.parquet"
+        args.out = ANALYTIC_DIR / "analytic_rbc_mit_v2.parquet"
 
     main(db_path=args.db, out_path=args.out, tmp_dir=args.tmp)
