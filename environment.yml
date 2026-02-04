@@ -17,3 +17,5 @@ dependencies:
   - pip
   - pip:
       - pyreadr
+      - tensorflow=2.14
+      - keras=2.14
