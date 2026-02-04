@@ -27,9 +27,9 @@ from src.baseline.split import split_by_subject
 from src.baseline.features import default_feature_columns, coerce_numeric_columns
 from src.baseline.models import HGBConfig, make_hgb_pipeline
 from src.baseline.summary import save_json
-
 from src.config import get_config, CONFIGS
 
+from src.cate.policy_check import make_risk_tau_policy_plots, TAU_LE_THR, TAU_GE_THR
 from src.cate.policy import (
     policy_from_tau,
     dr_policy_value,
@@ -231,10 +231,6 @@ def main():
 
     results["threshold_curve"] = curve_payload
 
-    save_json(out_path, results)
-    print(f"Saved policy value -> {out_path}")
-
-
     # Plot Threshold Curve
     try:
         import matplotlib.pyplot as plt
@@ -251,8 +247,33 @@ def main():
         plt.savefig(out_dir / "policy_threshold_curve.png")
         plt.close()
         print(f"Saved threshold curve plot -> {out_dir / 'policy_threshold_curve.png'}")
+
+        # Call Other Policy Checks
+        summary = make_risk_tau_policy_plots(
+            df=pred2.assign(
+                tau_hat=tau_hat,
+                ps_hat=ps_hat,
+                mu1_hat=mu1_hat,
+                mu0_hat=mu0_hat,
+            ),
+            threshold=curve_payload["threshold_best"]["threshold"],
+            n_bins=5,
+            rule= TAU_LE_THR if cfg.tau_direction == "lte" else TAU_GE_THR,
+            out_dir=out_dir / "plots",
+            tau_col="tau_hat",
+            mu0_col="mu0_hat",
+        )
+        print("---")
+        print(f"Plots saved in {out_dir / 'plots'}")
+        print("Completed policy checks and plots. Summary:")
+        print(summary)
+        results["policy_check_summary"] = summary.to_dict(orient="list")
+
     except ImportError:
         print("matplotlib not installed; skipping threshold curve plot.")
+
+    save_json(out_path, results)
+    print(f"Saved policy value -> {out_path}")
 
 
 if __name__ == "__main__":
