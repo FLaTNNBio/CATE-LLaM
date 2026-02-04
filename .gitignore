@@ -254,3 +254,9 @@ src/models/bcauss/
 *.jpeg
 *.gif
 *.svg
+
+# Other
+src/db_crrt/
+data/duckdb/
+duckdb/
+mimic-code/
