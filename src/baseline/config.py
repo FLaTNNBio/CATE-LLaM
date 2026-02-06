@@ -151,3 +151,21 @@ SEPSIS_V2 = BaselineConfig(
     policy="tau_lt_0",
     n_folds=5
 )
+
+
+DIUR_V1 = BaselineConfig(
+    data_path="data/analytic/analytic_sepsis_early_diuretics_v1.parquet",
+    id_col="stay_id",
+    subject_col="subject_id",
+    treatment_col="treat_early",
+    outcome_col="y_28d_mort_inhosp",
+    drop_cols=["intime", "t0_time","sepsis_time", "exposure_end", "treat_early", "y_28d_mort_inhosp",
+                "y_hosp_mort", "dischtime", "deathtime", "stay_id", "subject_id", "hadm_id",
+                 "glucose", "hemoglobin", "platelets"],
+    ps_clip=(0.01, 0.99),
+    weight_trim_quantiles=(0.01, 0.99),
+    out_dir="artifacts/cate/diur_v1",
+    tau_direction="lte",
+    policy="tau_lt_0",
+    n_folds=5
+)
