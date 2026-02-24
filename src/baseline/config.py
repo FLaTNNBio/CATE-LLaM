@@ -38,13 +38,15 @@ class BaselineConfig:
 
 
 VASO_V0 = BaselineConfig(
-    data_path="data/analytic/analytic_v0.parquet",
+    data_path="data/analytic/analytic_v0_extended_prepared.parquet",
     treatment_col="t_vaso6h",
     outcome_col="y_hosp_mort",
     drop_cols=["has_hba1c_1"],
     out_dir="artifacts/cate/vaso_v0",
     id_col="stay_id",
-    subject_col="subject_id"
+    subject_col="subject_id",
+    policy="tau_lt_0",
+    tau_direction="lte",
 )
 
 RBC_V1_FIXED = BaselineConfig(
