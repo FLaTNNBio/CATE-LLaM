@@ -44,7 +44,8 @@ def register_parquet_view(con, view_name: str = "cohort", parquet_path: Path = C
 
 
 # Import baseline configs for different datasets
-from src.baseline.config import VASO_V0, RBC_V1_FIXED, RESP_V1, CRRT_V1, SEPSIS_V1, SEPSIS_V2, RBC_V2, DIUR_V1
+from src.baseline.config import (VASO_V0, RBC_V1_FIXED, RESP_V1, CRRT_V1, SEPSIS_V1,
+                                 SEPSIS_V2, RBC_V2, DIUR_V1, AIDS_V1)
 
 CONFIGS = {
     "vaso_v0": VASO_V0,
@@ -54,7 +55,8 @@ CONFIGS = {
     "crrt_v1" : CRRT_V1,
     "sepsis_v1": SEPSIS_V1,
     "sepsis_v2": SEPSIS_V2,
-    "diur_v1": DIUR_V1
+    "diur_v1": DIUR_V1,
+    "aids_v1": AIDS_V1
 }
 
 def get_config(dataset_key: str):

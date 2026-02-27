@@ -15,6 +15,9 @@ class BaselineConfig:
     treatment_col: str = "t_vaso6h"
     outcome_col: str = "y_hosp_mort"
 
+    # Outcome Nice to Print Name
+    outcome_nice_name: Optional[str] = "Mortality"
+
     # split
     test_size: float = 0.15
     val_size: float = 0.15
@@ -35,7 +38,7 @@ class BaselineConfig:
 
     # Policy Tau
     policy: str = "tau_gt_0" # ["tau_gt_0", "tau_lt_0", "top_frac_benefit"]
-
+    top_frac:float = 0.2 # Only used if policy="top_frac_benefit", e.g. top 20% most benefit patients
 
 VASO_V0 = BaselineConfig(
     data_path="data/analytic/analytic_v0_extended_prepared.parquet",
@@ -168,6 +171,24 @@ DIUR_V1 = BaselineConfig(
     weight_trim_quantiles=(0.01, 0.99),
     out_dir="artifacts/cate/diur_v1",
     tau_direction="lte",
-    policy="tau_lt_0",
+    policy="tau_gt_0",
+    top_frac=0.2,
     n_folds=5
+)
+
+
+AIDS_V1 = BaselineConfig(
+    data_path="data/analytic/aids/aids_rct_id.parquet",
+    id_col="id",
+    subject_col="id",
+    treatment_col="treat",
+    outcome_col="label",
+    drop_cols=["time", "trt", "treat"],
+    ps_clip=(0.01, 0.99),
+    weight_trim_quantiles=(0.01, 0.99),
+    out_dir="artifacts/cate/aids_v1",
+    tau_direction="lte",
+    policy="tau_lt_0",
+    n_folds=5,
+    outcome_nice_name="AIDS Progression"
 )
