@@ -260,3 +260,6 @@ src/db_crrt/
 data/duckdb/
 duckdb/
 mimic-code/
+
+# Include AIDS data
+!data/analytic/aids/aids_rct_id.parquet
