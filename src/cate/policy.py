@@ -52,7 +52,7 @@ def policy_from_tau(tau_hat: np.ndarray, kind: str="tau_lt_0", top_frac: float=0
         return (tau_hat > 0.0).astype(int)
 
     if kind == "top_frac_benefit":
-        # treat chi ha tau più negativo (massimo beneficio)
+        # treat who has more negative tau (maximum benefit), up to top_frac of population
         if not (0.0 < top_frac < 1.0):
             raise ValueError("top_frac must be in (0,1)")
         thr = np.quantile(tau_hat, top_frac)  # lower = more negative
@@ -274,11 +274,14 @@ def threshold_curve(
     n_boot: int = 50,
     seed: int = 42,
     direction: str = "gte",  # "gte" or "lte"
+    policy_kind: str = "tau_lt_0",
 ) -> pd.DataFrame:
 
     tau_hat = np.asarray(tau_hat, dtype=float)
 
     def make_pi(thr: float) -> np.ndarray:
+        if policy_kind == "top_frac_benefit":
+            return policy_from_tau(tau_hat, kind=policy_kind, top_frac=thr)
         if direction == "gte":
             return (tau_hat >= thr).astype(int)
         if direction == "lte":
@@ -315,7 +318,13 @@ def threshold_curve(
     best_thr = float(out.loc[out["value_dr"].idxmin(), "threshold"])
 
     # refine around best
-    fine_thresholds = np.arange(best_thr - 0.05, best_thr + 0.051, 0.01)
+    if policy_kind == "top_frac_benefit":
+        fine_thresholds = np.clip(
+            np.arange(best_thr - 0.05, best_thr + 0.051, 0.01), 0.01, 0.99
+        )
+    else:
+        fine_thresholds = np.arange(best_thr - 0.05, best_thr + 0.051, 0.01)
+
     for thr in fine_thresholds:
         pi_policy = make_pi(float(thr))
         v_pi = dr_policy_value(
@@ -352,27 +361,3 @@ def threshold_curve(
     ci_df = pd.DataFrame(ci_rows)
     out = out.merge(ci_df, on="threshold", how="left")
     return out
-
-
-def _curve_loop_(Y: np.ndarray, cfg: PolicyValueConfig,
-                 fine_thresholds: np.ndarray,
-                 mu0_hat: np.ndarray, mu1_hat: np.ndarray,
-                 ps_hat: np.ndarray, res: list[Any], t: np.ndarray[tuple[Any, ...]],
-                 tau_hat: np.ndarray[tuple[Any, ...]], v_all: float, v_none: float):
-    for threshold in fine_thresholds:
-        pi_policy = (tau_hat >= threshold).astype(int)
-        pvcfg = PolicyValueConfig(ps_clip=cfg.ps_clip)
-        v_pi = dr_policy_value(y=Y, t=t, pi=pi_policy,
-                               ps_hat=ps_hat,
-                               mu1_hat=mu1_hat,
-                               mu0_hat=mu0_hat,
-                               cfg=pvcfg)
-        res.append(
-            {
-                "threshold": round(float(threshold), 4),
-                "treat_rate": round(float(np.mean(pi_policy)), 4),
-                "value_dr": round(float(v_pi), 4),
-                "delta_vs_none": round(float(v_pi - v_none), 4),
-                "delta_vs_all": round(float(v_pi - v_all), 4),
-            }
-        )
