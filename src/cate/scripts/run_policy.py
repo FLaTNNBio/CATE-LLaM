@@ -44,7 +44,7 @@ def main():
     ap.add_argument("--tau_pred", required=False, help="Path to <path/to/dr_tau_test.parquet>")
     ap.add_argument("--out_dir", help="Output directory")
     ap.add_argument("--policy", choices=POLICIES, help="Policy type to evaluate")
-    ap.add_argument("--top_frac", type=float, default=0.2, help="Top fraction to treat if policy=top_frac")
+    ap.add_argument("--top_frac", type=float, help="Top fraction to treat if policy=top_frac")
     ap.add_argument("--n_boot", type=int, default=50)
     ap.add_argument("--seed", type=int, default=42)
     args = ap.parse_args()
@@ -59,6 +59,8 @@ def main():
         args.tau_pred = cfg.out_dir + "/dr_tau_test.parquet"
     if args.policy is None:
         args.policy = cfg.policy
+    if args.top_frac is None:
+        args.top_frac = cfg.top_frac if cfg.policy == "top_frac_benefit" else None
 
     seed = int(args.seed)
 
@@ -147,11 +149,11 @@ def main():
 
     # bootstrap CIs (optional but useful)
     ci_none = bootstrap_policy_value(y=Y_te, t=T_te, pi=pi_none, ps_hat=ps_hat, mu1_hat=mu1_hat, mu0_hat=mu0_hat,
-                                    n_boot=args.n_boot, seed=seed, cfg=pvcfg)
+                                     n_boot=args.n_boot, seed=seed, cfg=pvcfg)
     ci_all  = bootstrap_policy_value(y=Y_te, t=T_te, pi=pi_all,  ps_hat=ps_hat, mu1_hat=mu1_hat, mu0_hat=mu0_hat,
-                                    n_boot=args.n_boot, seed=seed, cfg=pvcfg)
+                                     n_boot=args.n_boot, seed=seed, cfg=pvcfg)
     ci_pi   = bootstrap_policy_value(y=Y_te, t=T_te, pi=pi_policy, ps_hat=ps_hat, mu1_hat=mu1_hat, mu0_hat=mu0_hat,
-                                    n_boot=args.n_boot, seed=seed, cfg=pvcfg)
+                                     n_boot=args.n_boot, seed=seed, cfg=pvcfg)
 
     # treatment rates under policy
     treat_rate = float(np.mean(pi_policy))
@@ -161,7 +163,7 @@ def main():
             "n_test": int(len(Y_te)),
             "ps_clip": {"lo": float(cfg.ps_clip[0]), "hi": float(cfg.ps_clip[1])},
             "policy": args.policy,
-            "top_frac": float(args.top_frac),
+            "top_frac": float(args.top_frac) if args.top_frac is not None else None,
             "treat_rate_policy": treat_rate,
         },
         "values": {
@@ -190,8 +192,11 @@ def main():
 
     print("\n Now Running Threshold Curve Evaluation...")
 
-    thresholds = np.linspace(-0.30, 0.60, 20)
 
+    if args.policy == "top_frac_benefit":
+        thresholds = np.linspace(0.05, 0.9, 10)  # e.g. top 5% to top 90% most benefit patients
+    else:
+        thresholds = np.linspace(-0.30, 0.60, 20)
     curve = threshold_curve(
         Y=Y_te,
         t=T_te,
@@ -203,8 +208,10 @@ def main():
         thresholds=thresholds,
         n_boot=args.n_boot,
         seed=seed,
-        direction=cfg.tau_direction
+        direction=cfg.tau_direction,
+        policy_kind=args.policy,
     )
+
 
     curve.to_csv(out_dir / "policy_threshold_curve.csv", index=False)
     print(f"All threshold results saved in {out_dir / 'policy_threshold_curve.csv'}.")
@@ -237,7 +244,7 @@ def main():
 
         plt.figure(figsize=(8, 6))
         plt.plot(curve["threshold"], curve["value_dr"], marker='o', color='green', label='Policy Value')
-        plt.xlabel("Threshold")
+        plt.xlabel("Threshold" + (" (top fraction treated)" if args.policy == "top_frac_benefit" else ""))
         plt.ylabel(f"Doubly Robust Policy Value ({cfg.outcome_col})")
         plt.title("Threshold Curve for Treatment Policy")
         plt.axhline(y=v_none, color='r', linestyle='--', label='Treat None')
@@ -248,6 +255,13 @@ def main():
         plt.close()
         print(f"Saved threshold curve plot -> {out_dir / 'policy_threshold_curve.png'}")
 
+        if args.policy == "top_frac_benefit":
+            rule = args.policy
+        elif cfg.tau_direction == "lte":
+            rule = TAU_LE_THR
+        else:
+            rule = TAU_GE_THR
+
         # Call Other Policy Checks
         summary = make_risk_tau_policy_plots(
             df=pred2.assign(
@@ -256,12 +270,13 @@ def main():
                 mu1_hat=mu1_hat,
                 mu0_hat=mu0_hat,
             ),
-            threshold=curve_payload["threshold_best"]["threshold"],
+            threshold= curve_payload["threshold_best"]["threshold"] if args.policy != "top_frac_benefit" else args.top_frac,
             n_bins=5,
-            rule= TAU_LE_THR if cfg.tau_direction == "lte" else TAU_GE_THR,
+            rule=rule,
             out_dir=out_dir / "plots",
             tau_col="tau_hat",
             mu0_col="mu0_hat",
+            outcome_nice_name=cfg.outcome_nice_name
         )
         print("---")
         print(f"Plots saved in {out_dir / 'plots'}")
