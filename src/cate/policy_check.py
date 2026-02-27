@@ -17,8 +17,16 @@ def policy_decision(tau: pd.Series, threshold: float, rule: str = "tau_le_thr") 
         return (tau.values <= threshold).astype(int)
     elif rule == "tau_ge_thr":
         return (tau.values >= threshold).astype(int)
+    elif rule == "top_frac_benefit":
+        # threshold is interpreted as top fraction, e.g. 0.2 = top 20% most benefit patients
+        n = len(tau)
+        n_treat = int(np.ceil(n * threshold))
+        top_idx = np.argsort(tau.values)[:n_treat]  # indices of top n_treat patients
+        a_pi = np.zeros(n, dtype=int)
+        a_pi[top_idx] = 1
+        return a_pi
     else:
-        raise ValueError("rule must be 'tau_le_thr' or 'tau_ge_thr'")
+        raise ValueError("rule must be 'tau_le_thr', 'tau_ge_thr' or 'top_frac_benefit'")
 
 def make_risk_tau_policy_plots(
     df: pd.DataFrame,
@@ -29,13 +37,15 @@ def make_risk_tau_policy_plots(
     mu0_col: str = "mu0_hat",
     mu1_col: str = "mu1_hat",
     out_dir: Path = None,
+    outcome_nice_name: str = "Mortalità",
 ):
     """
     Produces:
       1) boxplot of tau_hat over risk quantiles mu0_hat
       2) line plot: treat rate for each bin
       3) bar plot: estimated mortality under policy vs treat-none (plugin)
-      4) bar plot: expected benefit contribution per bin
+      4) bar plot: estimated mortality under policy vs treat-all (plugin)
+      5) bar plot: expected benefit contribution per bin
     """
     out_dir = out_dir or Path.cwd()
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -66,8 +76,11 @@ def make_risk_tau_policy_plots(
         treat_rate=("a_pi", "mean"),
         mort_policy=("mu_pi", "mean"),
         mort_none=(mu0_col, "mean"),
+        mort_treat_all=(mu1_col, "mean"),
     ).reset_index()
-
+    # Policy delta vs treat-all
+    summary["delta_policy_vs_treat_all"] = summary["mort_policy"] - summary["mort_treat_all"]
+    # Policy delta vs treat-none
     summary["delta_policy_vs_none"] = summary["mort_policy"] - summary["mort_none"]  # <0 = better
     # Absolute contribute (how much it lowers that bin on average)
     summary["benefit_abs"] = -summary["delta_policy_vs_none"]  # positive = benefit
@@ -102,14 +115,27 @@ def make_risk_tau_policy_plots(
     plt.bar(x - 0.2, summary["mort_none"].values, width=0.4, label="Treat-none (mu0)")
     plt.bar(x + 0.2, summary["mort_policy"].values, width=0.4, label="Policy (mu_pi)")
     plt.xlabel(f"Bin rischio baseline (1=più basso → {n_bins_eff}=più alto)")
-    plt.ylabel("Mortalità stimata (plugin)")
-    plt.title("Mortalità stimata per bin: policy vs treat-none")
+    plt.ylabel(f"{outcome_nice_name} stimata (plugin)")
+    plt.title(f"{outcome_nice_name} stimata per bin: policy vs treat-none")
     plt.legend()
     plt.grid()
-    plt.savefig(out_dir / "policy_mortality_by_risk_bin.png")
+    plt.savefig(out_dir / "policy_outcome_by_risk_bin.png")
     plt.close()
 
-    # --------- Plot 4: contribution (benefit_total)
+    # --------- Plot 4: policy mortality vs treat-all (plugin)
+    plt.figure()
+    x = np.arange(n_bins_eff)
+    plt.bar(x - 0.2, summary["mort_treat_all"].values, width=0.4, label="Treat-all (mu1)")
+    plt.bar(x + 0.2, summary["mort_policy"].values, width=0.4, label="Policy (mu_pi)")
+    plt.xlabel(f"Bin rischio baseline (1=più basso → {n_bins_eff}=più alto)")
+    plt.ylabel(f"{outcome_nice_name} stimata (plugin)")
+    plt.title(f"{outcome_nice_name} stimata per bin: policy vs treat-all")
+    plt.legend()
+    plt.grid()
+    plt.savefig(out_dir / "policy_outcome_vs_treat_all_by_risk_bin.png")
+    plt.close()
+
+    # --------- Plot 5: contribution (benefit_total)
     plt.figure()
     plt.bar(np.arange(n_bins_eff), summary["benefit_total"].values)
     plt.xlabel(f"Bin rischio baseline (1=più basso → {n_bins_eff}=più alto)")
