@@ -61,7 +61,7 @@ def parse_cate(text: str) -> Optional[float]:
     return None
 
 
-def call_lmstudio_stateless(user_content: str, temperature: float = 0.0, timeout: int = 180) -> str:
+def call_lmstudio_stateless(user_content: str, temperature: float = 0.0, timeout: int = 1800) -> str:
     url = f"{BASE_URL}/chat/completions"
     payload = {
         "model": MODEL,
