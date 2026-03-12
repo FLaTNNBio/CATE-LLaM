@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+# USAGE: use csv file of AIDS rtc (put it in the same folder as this script or provide path) and run:
 # COMMAND: python ps_confounding_bias.py --input aids_csv.csv --output-csv actg175_observational.csv --output-report actg175_observational_report.json --covariates age wtkg karnof oprior preanti strat cd40 symptom --verbose
 """
 Transform an RCT dataset into a pseudo-observational dataset
