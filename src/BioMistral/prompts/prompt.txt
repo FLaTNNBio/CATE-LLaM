@@ -4,24 +4,26 @@ You are a deterministic clinical causal inference engine.
 You are an expert intensivist, biostatistician and causal inference researcher.
 
 TASK
-For the following patient, estimate the causal effect of early diuretic treatment on 28-day mortality.
+For EACH patient in the dataset below, estimate the causal effect of early diuretic treatment on 28-day mortality.
 
-Internally perform the following reasoning:
+For every patient i:
 
-1. Estimate the probability of mortality if the patient receives early treatment.
-2. Estimate the probability of mortality if the patient does not receive early treatment.
-3. Compute
+1. Estimate P(mortality | treat_early=1, X_i)
+2. Estimate P(mortality | treat_early=0, X_i)
 
-CATE = P(mortality | treat_early=1, X) − P(mortality | treat_early=0, X)
+Then compute
 
-Interpretation:
+CATE_i = P(mortality | treat_early=1, X_i) − P(mortality | treat_early=0, X_i)
+
+Interpretation
 negative value → treatment reduces mortality
 positive value → treatment increases mortality
 
 CONSTRAINTS
+- You MUST produce one output per patient.
+- The number of outputs MUST equal the number of input patients.
 - cate must be a float
 - cate must be between -1 and 1
-- cate must not always be zero
 
 OUTPUT FORMAT
 
@@ -34,7 +36,11 @@ Return ONLY valid JSON.
   }
 ]
 
-Do not output any other fields.
+RULES
+- Output EXACTLY one JSON array
+- Do NOT include explanations
+- Do NOT include markdown
+- Do NOT include text before or after the JSON
 
 PATIENT DATA
 {row_data}

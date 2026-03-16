@@ -30,6 +30,7 @@ class CATEEstimator:
         )
 
         parsed = self.parser.parse(raw_output)
+        logger.debug(f"LLM RAW OUTPUT:\n{raw_output}")
 
         # parsing failed
         if parsed is None:

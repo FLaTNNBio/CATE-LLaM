@@ -3,6 +3,7 @@ from transformers import AutoTokenizer, AutoModelForCausalLM
 
 from .base_llm import BaseLLM
 
+
 class LocalLLM(BaseLLM):
 
     def __init__(self, model_id: str, device: str = "cuda"):
@@ -14,22 +15,15 @@ class LocalLLM(BaseLLM):
 
     def load(self):
 
-        print(f"Loading local model: {self.model_id}")
-
-        self.tokenizer = AutoTokenizer.from_pretrained(
-            self.model_id,
-            use_fast=True
-        )
+        self.tokenizer = AutoTokenizer.from_pretrained(self.model_id)
 
         self.model = AutoModelForCausalLM.from_pretrained(
             self.model_id,
-            torch_dtype=torch.float16 if self.device == "cuda" else torch.float32,
-            device_map="auto"
+            device_map="auto",
+            torch_dtype=torch.float16 if self.device == "cuda" else torch.float32
         )
 
-        self.model.eval()
-
-        print("Local model loaded successfully.")
+        self._loaded = True
 
     def generate(
         self,
@@ -39,40 +33,16 @@ class LocalLLM(BaseLLM):
         max_tokens: int = 800
     ) -> str:
 
-        if self.model is None or self.tokenizer is None:
-            raise RuntimeError("Model not loaded. Call load() first.")
+        self._check_loaded()
 
-        messages = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ]
+        prompt = f"{system_prompt}\n\n{user_prompt}"
 
-        prompt = self.tokenizer.apply_chat_template(
-            messages,
-            tokenize=False,
-            add_generation_prompt=True
+        inputs = self.tokenizer(prompt, return_tensors="pt").to(self.device)
+
+        output = self.model.generate(
+            **inputs,
+            max_new_tokens=max_tokens,
+            temperature=temperature
         )
 
-        inputs = self.tokenizer(
-            prompt,
-            return_tensors="pt"
-        ).to(self.model.device)
-
-        with torch.no_grad():
-
-            outputs = self.model.generate(
-                **inputs,
-                max_new_tokens=max_tokens,
-                temperature=temperature,
-                do_sample=temperature > 0,
-                pad_token_id=self.tokenizer.eos_token_id
-            )
-
-        generated = outputs[0][inputs["input_ids"].shape[-1]:]
-
-        text = self.tokenizer.decode(
-            generated,
-            skip_special_tokens=True
-        )
-
-        return text.strip()
+        return self.tokenizer.decode(output[0], skip_special_tokens=True)

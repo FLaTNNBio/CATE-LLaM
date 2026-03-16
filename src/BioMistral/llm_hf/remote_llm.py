@@ -1,35 +1,37 @@
 
-from huggingface_hub import InferenceClient
-
+from openai import OpenAI
 from .base_llm import BaseLLM
 
 class RemoteLLM(BaseLLM):
     """
-    Implementazione per modelli remoti via HuggingFace Inference API.
+    Implementanion for remote  model from HuggingFace Inference API and openrouter.
     """
 
-    def __init__(self, model_id: str, api_key: str):
-        """
-        :param model_id: HF model id (es. meta-llama/Meta-Llama-3-8B-Instruct)
-        :param api_key: token HF
-        """
+    def __init__(
+            self,
+            model_id: str,
+            api_key: str,
+            base_url: str
+    ):
         super().__init__(model_id)
 
+        if not api_key:
+            raise ValueError("API key is required for remote models")
+
+        if not base_url:
+            raise ValueError("base_url is required for remote models")
+
         self.api_key = api_key
+        self.base_url = base_url
         self.client = None
 
+
     def load(self):
-        """
-        Inizializza il client HF.
-        """
 
-        if not self.api_key:
-            raise ValueError("API key is required for RemoteLLM.")
-
-        print(f"Initializing remote model: {self.model_id}")
-
-        self.client = InferenceClient(api_key=self.api_key)
-
+        self.client = OpenAI(api_key=self.api_key,
+                             base_url=self.base_url)
+        self._loaded = True
+        print("Loaded model: {}".format(self.model_id))
         print("Remote client initialized.")
 
     def generate(
@@ -39,15 +41,14 @@ class RemoteLLM(BaseLLM):
         temperature: float = 0.0,
         max_tokens: int = 800
     ) -> str:
-        """
-        Genera testo usando chat_completion.
-        """
+        self._check_loaded()
+
 
         if self.client is None:
             raise RuntimeError("Client not initialized. Call load() first.")
         try:
 
-            response = self.client.chat_completion(
+            response = self.client.chat.completions.create(
                 model=self.model_id,
                 messages=[
                     {"role": "system", "content": system_prompt},

@@ -3,23 +3,21 @@ from abc import ABC, abstractmethod
 
 class BaseLLM(ABC):
     """
-    Classe astratta base per qualsiasi modello LLM
-    (locale o remoto).
+    Abstrac class for anything model
 
-    Definisce l'interfaccia comune che deve essere
-    rispettata da tutte le implementazioni concrete.
+
+    All implementation do that interfact
+    Tutte le implementazioni devono rispettare questa interfaccia.
     """
 
     def __init__(self, model_id: str):
-        """
-        :param model_id: nome del modello (HF repo id o path locale)
-        """
         self.model_id = model_id
+        self._loaded = False
 
     @abstractmethod
     def load(self):
         """
-        Carica il modello (inizializzazione client o pesi).
+        Carica il modello o inizializza il client remoto.
         Deve essere chiamato prima di generate().
         """
         pass
@@ -32,15 +30,11 @@ class BaseLLM(ABC):
         temperature: float = 0.0,
         max_tokens: int = 800
     ) -> str:
-        """
-        Genera una risposta testuale dal modello.
 
-        :param system_prompt: ruolo system
-        :param user_prompt: prompt utente
-        :param temperature: temperatura di generazione
-        :param max_tokens: massimo numero di token generati
-        :return: stringa prodotta dal modello
-        """
         pass
 
-
+    def _check_loaded(self):
+        if not self._loaded:
+            raise RuntimeError(
+                f"{self.__class__.__name__} not loaded. Call load() first."
+            )

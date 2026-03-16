@@ -1,7 +1,6 @@
-import os
-from dotenv import load_dotenv
 from pathlib import Path
 
+from src.BioMistral.llm_hf.llm_factory import LLMFactory
 from src.BioMistral.utils import (
     StrictJSONParser,
     CATEValidator,
@@ -9,7 +8,6 @@ from src.BioMistral.utils import (
     setup_logging
 )
 from src.BioMistral.config import AppConfig, LLMConfig, PipelineConfig
-from src.BioMistral.llm_hf.remote_llm import RemoteLLM
 from src.BioMistral.domain.cate_estimator import CATEEstimator
 from src.BioMistral.pipeline.cate_pipeline import CATEPipeline
 
@@ -17,16 +15,18 @@ from src.BioMistral.pipeline.cate_pipeline import CATEPipeline
 def main():
     setup_logging()
 
-    load_dotenv()
-    hf_token = os.getenv("HF_TOKEN")
-    if not hf_token:
-        raise ValueError("HF_TOKEN not found in environment variables")
-
     # configuration
     config = AppConfig(
+        # llm=LLMConfig(
+        #     provider="hf",
+        #     model_id="meta-llama/Meta-Llama-3-8B-Instruct"
+        # ),
+
         llm=LLMConfig(
-            model_id="meta-llama/Meta-Llama-3-8B-Instruct",
+             provider="openrouter",
+             model_id="google/gemma-3-27b-it"
         ),
+
         pipeline=PipelineConfig(
             dataset_path=Path("data/analytic/analytic_sepsis_early_diuretics_v1.parquet"),
             prompt_path=Path("src/BioMistral/prompts/prompt.txt"),
@@ -36,11 +36,7 @@ def main():
         )
     )
 
-    # initialize LLM
-    llm = RemoteLLM(
-        model_id=config.llm.model_id,
-        api_key=hf_token
-    )
+    llm = LLMFactory.create(config.llm)
     llm.load()
 
     # parser + validation
