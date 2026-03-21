@@ -8,35 +8,40 @@ import pandas as pd
 from .validation import validate_required_inputs
 
 
-def select_required_columns(
-    df: pd.DataFrame,
+def get_required_columns_for_cleaning(
     covariates: Sequence[str],
     outcome_col: str,
     original_treatment_col: str,
-    id_column: str | None = "id"
-) -> pd.DataFrame:
+    id_column: str | None = None,
+) -> list[str]:
     """
-    Select only the columns required for the confounding-bias transformation.
-    
+    Return the columns that must be present and non-missing for a row
+    to be kept in the cleaned dataset.
+
     """
     required = list(covariates) + [outcome_col, original_treatment_col]
+
     if id_column is not None:
-        required = [id_column] + required
-    required = list(dict.fromkeys(required))  # per evitare duplicati
-    return df[required].copy()
+        required.append(id_column)
+
+    # remove duplicates while preserving order
+    required = list(dict.fromkeys(required))
+    return required
 
 
-def drop_missing_required_rows(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
+def drop_missing_required_rows(
+    df: pd.DataFrame,
+    required_columns: Sequence[str],
+) -> tuple[pd.DataFrame, dict]:
     """
-    Drop rows with missing values from the provided dataframe.
-
-    Returns
-    -------
-    tuple[pd.DataFrame, dict]
-        Cleaned dataframe and metadata.
+    Drop rows with missing values only on the required columns,
+    while preserving all original dataframe columns.
     """
     before = int(len(df))
-    cleaned_df = df.dropna().reset_index(drop=True)
+
+    mask_complete = df[list(required_columns)].notna().all(axis=1)
+    cleaned_df = df.loc[mask_complete].reset_index(drop=True).copy()
+
     after = int(len(cleaned_df))
 
     logging.info("Rows before dropna: %d", before)
@@ -46,6 +51,7 @@ def drop_missing_required_rows(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
         raise ValueError("No rows left after dropping missing values.")
 
     metadata = {
+        "required_columns_for_cleaning": list(required_columns),
         "n_rows_before": before,
         "n_rows_after": after,
         "dropped_rows": before - after,
@@ -59,11 +65,11 @@ def select_and_clean_data(
     covariates: Sequence[str],
     outcome_col: str,
     original_treatment_col: str,
-    id_column: str | None = "id",
+    id_column: str | None = None,
 ) -> tuple[pd.DataFrame, dict]:
     """
-    Select the required columns and drop rows with missing values only on those columns.
-    
+    Validate required columns and drop rows with missing values on the
+    required columns only, while keeping all original dataset columns.
     """
     validate_required_inputs(
         df=df,
@@ -73,13 +79,16 @@ def select_and_clean_data(
         id_column=id_column,
     )
 
-    work_df = select_required_columns(
-        df=df,
+    required_columns = get_required_columns_for_cleaning(
         covariates=covariates,
         outcome_col=outcome_col,
         original_treatment_col=original_treatment_col,
         id_column=id_column,
     )
 
-    work_df, metadata = drop_missing_required_rows(work_df)
-    return work_df, metadata
+    cleaned_df, metadata = drop_missing_required_rows(
+        df=df,
+        required_columns=required_columns,
+    )
+
+    return cleaned_df, metadata

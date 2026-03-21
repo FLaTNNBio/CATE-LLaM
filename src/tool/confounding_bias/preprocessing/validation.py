@@ -63,11 +63,8 @@ def validate_required_inputs(
     covariates: Sequence[str],
     outcome_col: str,
     original_treatment_col: str,
-    id_column: str | None = "id",
+    id_column: str | None = None,
 ) -> None:
-    """
-    End-to-end validation for the confounding-bias preprocessing step.
-    """
     validate_dataframe_not_none(df)
     validate_dataframe_not_empty(df)
 
@@ -79,4 +76,5 @@ def validate_required_inputs(
     required = list(covariates) + [outcome_col, original_treatment_col]
     if id_column is not None:
         required.append(id_column)
+
     validate_columns(df, required)

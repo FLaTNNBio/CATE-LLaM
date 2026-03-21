@@ -1,7 +1,7 @@
 from .missing import (
     drop_missing_required_rows,
     select_and_clean_data,
-    select_required_columns,
+    get_required_columns_for_cleaning,
 )
 from .scaling import standardize_covariates
 from .validation import (
@@ -15,7 +15,7 @@ from .validation import (
 __all__ = [
     "drop_missing_required_rows",
     "select_and_clean_data",
-    "select_required_columns",
+    "get_required_columns_for_cleaning",
     "standardize_covariates",
     "validate_columns",
     "validate_dataframe_not_empty",
