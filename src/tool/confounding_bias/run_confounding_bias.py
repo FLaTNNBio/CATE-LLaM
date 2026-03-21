@@ -1,6 +1,6 @@
 """
 Command-line tool to create a pseudo-observational version of an RCT dataset using an artificial propensity score.
-python -m confounding_bias.run_confounding_bias --input ../../data/analytic/aids/aids_rct_id.parquet --output-parquet ../results/confounding_bias/actg175_observational.parquet --output-report ../results/confounding_bias/actg175_observational_report.json --covariates age wtkg karnof oprior preanti strat cd40 symptom --outcome-col label --original-treatment-col treat --new-treatment-col treat_obs --ps-col ps_artificial --clip-min 0.05 --clip-max 0.95 --intercept 0.0 --seed 42 --verbose
+python -m confounding_bias.run_confounding_bias --input ../results/selection_bias/aids_obs_selected.parquet --output-parquet ../results/confounding_bias/actg175_observational.parquet --output-report ../results/confounding_bias/actg175_observational_report.json --covariates age wtkg karnof oprior preanti strat cd40 symptom --outcome-col label --original-treatment-col treat --new-treatment-col treat_obs --ps-col ps_artificial --clip-min 0.05 --clip-max 0.95 --intercept 0.0 --seed 42 --verbose
 """
 
 from __future__ import annotations

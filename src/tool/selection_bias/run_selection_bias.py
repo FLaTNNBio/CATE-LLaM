@@ -1,6 +1,6 @@
 """
 NOTE: This script is intended to be run from the command line. Example usage:
-python -m selection_bias.run_selection_bias --input ../../data/analytic/aids/aids_obs.parquet --output-selected ../results/selection_bias/aids_obs_selected.parquet --output-report ../results/selection_bias/report.json --covariates age wtkg karnof oprior preanti strat cd40 symptom --treatment-column treat_obs --outcome-column label --target-inclusion-rate 0.70 --selection-strength 1.0 --seed 42 --feature-weights age=0.8 wtkg=-0.2 karnof=1.0 oprior=0.4 preanti=0.3 strat=-0.1 cd40=0.9 symptom=-0.5 --verbose
+python -m selection_bias.run_selection_bias --input ../../data/analytic/aids/aids_rct_id.parquet --output-selected ../results/selection_bias/aids_obs_selected.parquet --output-report ../results/selection_bias/report.json --covariates age wtkg karnof oprior preanti strat cd40 symptom --treatment-column treat --outcome-column label --target-inclusion-rate 0.80 --selection-strength 1.0 --seed 42 --feature-weights age=0.8 wtkg=-0.2 karnof=1.0 oprior=0.4 preanti=0.3 strat=-0.1 cd40=0.9 symptom=-0.5 --verbose
 
 USER GUIDE:
 This script applies a pre-treatment selection bias to a dataset. It takes an input dataset, applies a selection mechanism based on specified covariates and parameters, and outputs a selected dataset along with a JSON report.
