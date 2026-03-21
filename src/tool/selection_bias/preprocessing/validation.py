@@ -230,6 +230,7 @@ def validate_selection_inputs(
     outcome_column: str | None = None,
     require_numeric_covariates: bool = True,
     validate_treatment_as_binary: bool = False,
+    id_column: str | None = None
 ) -> None:
     """
     Perform end-to-end validation for selection bias inputs.
@@ -267,6 +268,8 @@ def validate_selection_inputs(
         required_columns.append(treatment_column)
     if outcome_column is not None:
         required_columns.append(outcome_column)
+    if id_column is not None:
+        required_columns.append(id_column)
 
     validate_required_columns(df, required_columns)
     validate_columns_not_all_missing(df, covariates)

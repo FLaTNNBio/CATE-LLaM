@@ -44,6 +44,7 @@ def run_selection_pipeline(
         outcome_column=config.outcome_column,
         require_numeric_covariates=True,
         validate_treatment_as_binary=config.validate_treatment_as_binary,
+        id_column=config.id_column,
     )
 
     df_eligible, missing_metadata = apply_missing_policy(

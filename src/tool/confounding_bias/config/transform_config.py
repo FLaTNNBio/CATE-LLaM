@@ -33,6 +33,8 @@ class TransformConfig:
     clip_max: float = DEFAULT_CLIP_MAX
     intercept: float = DEFAULT_INTERCEPT
     seed: int = DEFAULT_SEED
+    
+    id_column: str | None = "id"
 
     def __post_init__(self) -> None:
         self.input_path = Path(self.input_path)
@@ -87,6 +89,7 @@ class TransformConfig:
             "input_path": str(self.input_path),
             "output_parquet": str(self.output_parquet),
             "output_report": str(self.output_report),
+            "id_column": self.id_column,
             "covariates": list(self.covariates),
             "outcome_col": self.outcome_col,
             "original_treatment_col": self.original_treatment_col,

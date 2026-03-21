@@ -88,6 +88,12 @@ def build_parser() -> argparse.ArgumentParser:
         default=DEFAULT_PS_COL,
     )
     parser.add_argument(
+        "--id-column",
+        type=str,
+        default="id",
+        help="Identifier column to preserve in outputs.",
+    )
+    parser.add_argument(
         "--clip-min",
         type=float,
         default=DEFAULT_CLIP_MIN,
@@ -128,6 +134,7 @@ def build_config_from_args(args: argparse.Namespace) -> TransformConfig:
         original_treatment_col=args.original_treatment_col,
         new_treatment_col=args.new_treatment_col,
         ps_col=args.ps_col,
+        id_column=args.id_column,
         clip_min=args.clip_min,
         clip_max=args.clip_max,
         intercept=args.intercept,
@@ -152,6 +159,7 @@ def main() -> None:
         covariates=config.covariates,
         outcome_col=config.outcome_col,
         original_treatment_col=config.original_treatment_col,
+        id_column=config.id_column,
     )
 
     LOGGER.info("Standardizing covariates")

@@ -34,6 +34,7 @@ class SelectionBiasConfig:
     output_report_path: str | Path
 
     covariates: list[str]
+    id_column: str | None = "id"
 
     treatment_column: str | None = None
     outcome_column: str | None = None

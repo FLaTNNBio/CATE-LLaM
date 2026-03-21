@@ -82,6 +82,11 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Optional outcome column (used for reporting).",
     )
+    parser.add_argument(
+        "--id-column",
+        default="id",
+        help="Identifier column to preserve in outputs.",
+    )
 
     parser.add_argument(
         "--missing-policy",
@@ -247,6 +252,7 @@ def build_config_from_args(args: argparse.Namespace) -> SelectionBiasConfig:
         covariates=args.covariates,
         treatment_column=args.treatment_column,
         outcome_column=args.outcome_column,
+        id_column=args.id_column,
         missing_policy=args.missing_policy,
         target_inclusion_rate=args.target_inclusion_rate,
         selection_strength=args.selection_strength,

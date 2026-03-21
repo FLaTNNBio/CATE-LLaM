@@ -13,12 +13,16 @@ def select_required_columns(
     covariates: Sequence[str],
     outcome_col: str,
     original_treatment_col: str,
+    id_column: str | None = "id"
 ) -> pd.DataFrame:
     """
     Select only the columns required for the confounding-bias transformation.
     
     """
     required = list(covariates) + [outcome_col, original_treatment_col]
+    if id_column is not None:
+        required = [id_column] + required
+    required = list(dict.fromkeys(required))  # per evitare duplicati
     return df[required].copy()
 
 
@@ -55,6 +59,7 @@ def select_and_clean_data(
     covariates: Sequence[str],
     outcome_col: str,
     original_treatment_col: str,
+    id_column: str | None = "id",
 ) -> tuple[pd.DataFrame, dict]:
     """
     Select the required columns and drop rows with missing values only on those columns.
@@ -65,6 +70,7 @@ def select_and_clean_data(
         covariates=covariates,
         outcome_col=outcome_col,
         original_treatment_col=original_treatment_col,
+        id_column=id_column,
     )
 
     work_df = select_required_columns(
@@ -72,6 +78,7 @@ def select_and_clean_data(
         covariates=covariates,
         outcome_col=outcome_col,
         original_treatment_col=original_treatment_col,
+        id_column=id_column,
     )
 
     work_df, metadata = drop_missing_required_rows(work_df)
