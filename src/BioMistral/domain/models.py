@@ -5,6 +5,3 @@ from dataclasses import dataclass
 class CATEResult:
     original_index: int
     cate_estimate: float
-    model_id: str
-    temperature: float
-    max_tokens: int

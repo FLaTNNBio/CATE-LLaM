@@ -1,7 +1,5 @@
 import logging
-from typing import List, Optional
 
-from .models import CATEResult
 
 logger = logging.getLogger(__name__)
 
@@ -9,52 +7,70 @@ logger = logging.getLogger(__name__)
 class CATEEstimator:
 
     def __init__(self, llm, parser, validator, config):
-
         self.llm = llm
         self.parser = parser
         self.validator = validator
         self.config = config
 
-    def estimate(
-        self,
-        system_prompt: str,
-        user_prompt: str,
-        expected_indices: List[int]
-    ) -> Optional[List[CATEResult]]:
+    def estimate(self, system_prompt, user_prompt, expected_ids):
 
-        raw_output = self.llm.generate(
-            system_prompt=system_prompt,
-            user_prompt=user_prompt,
-            temperature=self.config.temperature,
-            max_tokens=self.config.max_tokens
-        )
+        remaining_ids = set(expected_ids)
+        final_results  = {}
 
-        parsed = self.parser.parse(raw_output)
-        logger.debug(f"LLM RAW OUTPUT:\n{raw_output}")
+        for retries in range(self.config.max_retries):
+            if not remaining_ids:
+                break #all id
 
-        # parsing failed
-        if parsed is None:
-            logger.warning("Parser returned None")
-            return None
+            prompt = user_prompt
+            if retries > 0:
+                prompt = self._reinforce_prompt(user_prompt, retries, remaining_ids)
 
-        valid, reason = self.validator.validate(parsed, expected_indices)
 
-        if not valid:
-            logger.warning(f"Validation failed: {reason}")
-            return None
-
-        results = []
-
-        for item in parsed:
-
-            results.append(
-                CATEResult(
-                    original_index=item["patient_index"],
-                    cate_estimate=float(item["cate"]),
-                    model_id=self.llm.model_id,
-                    temperature=self.config.temperature,
-                    max_tokens=self.config.max_tokens
-                )
+            raw_output = self.llm.generate(
+                system_prompt=system_prompt,
+                user_prompt=prompt,
+                temperature=self.config.temperature,
+                max_tokens=self.config.max_tokens
             )
 
-        return results
+            logger.info(f"OUTPUT:\n{raw_output}")
+            logger.info(f"LLM RAW OUTPUT:\n{raw_output}")
+
+            try:
+                parsed = self.parser.parse(raw_output)
+
+                valid, reason, partial_report = self.validator.validate(parsed,remaining_ids)
+
+                # aggiorna risultati e logga missing
+                final_results.update(partial_report["valid_items"])
+                remaining_ids = set(remaining_ids) - set(final_results.keys())
+
+                logger.warning(f"Missing IDs after attempt {retries}: {remaining_ids}")
+
+                if not valid:
+                    logger.warning(f"Validation failed: {reason}")
+                    raise ValueError(f"Validation failed: {reason}")
+
+                if not remaining_ids:
+                    break
+
+            except Exception as e:
+                logger.warning(f"Attempt {retries} failed: {e}")
+
+        if remaining_ids:
+            logger.warning(f"Some IDs could not be estimated: {remaining_ids}")
+
+        return final_results
+
+
+    def _reinforce_prompt(self, prompt, retries, missing_ids):
+
+        missing_str = ", ".join(str(i) for i in missing_ids)
+        return (
+                prompt +
+                f"\n\nWARNING: Previous output was INVALID.\n"
+                f"Retry attempt {retries}.\n"
+                f"Please provide estimates for these IDs only: {missing_str}\n"
+                "You MUST follow JSON format EXACTLY.\n"
+                "Any deviation will be rejected.\n"
+        )

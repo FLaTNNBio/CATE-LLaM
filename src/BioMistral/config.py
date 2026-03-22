@@ -9,8 +9,9 @@ class LLMConfig:
 
     model_id: str = None
 
-    temperature: float = 0.5
+    temperature: float = 0.4
     max_tokens: int = 800
+    max_retries: int = 3
 
     device: str = "cuda"
 
