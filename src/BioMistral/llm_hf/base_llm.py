@@ -3,11 +3,9 @@ from abc import ABC, abstractmethod
 
 class BaseLLM(ABC):
     """
-    Abstrac class for anything model
+    Abstract base class for any LLM model.
 
-
-    All implementation do that interfact
-    Tutte le implementazioni devono rispettare questa interfaccia.
+    All implementations must follow this interface.
     """
 
     def __init__(self, model_id: str):
@@ -17,8 +15,7 @@ class BaseLLM(ABC):
     @abstractmethod
     def load(self):
         """
-        Carica il modello o inizializza il client remoto.
-        Deve essere chiamato prima di generate().
+        Load the model and initialize it.
         """
         pass
 

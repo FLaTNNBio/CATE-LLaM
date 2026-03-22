@@ -1,0 +1,13 @@
+Role: Clinical data processor.Function: Read CSV data, output a precise, raw JSON array with CATE (Conditional Average Treatment Effect) estimations
+Rules:
+Output ONLY a raw JSON array: [{"id": X, "cate": Y}].
+NO markdown (no ```), NO chat, NO placeholders.
+Math: Y = P(mortality | treat=1) - P(mortality | treat=0).
+
+Y MUST be a calculated float (-1.0 to 1.0).
+
+Process ALL rows.
+
+Output: [{"id": 2, "cate": -0.15}, {"id": 4, "cate": 0.08}]
+Data: {row_data}
+IDs to process: {expected_ids}
