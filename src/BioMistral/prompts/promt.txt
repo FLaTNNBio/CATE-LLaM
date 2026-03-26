@@ -1,0 +1,26 @@
+You are an expert intensivist and data scientist.
+
+Your task is to analyze the clinical data of a patient admitted to the Intensive Care Unit (ICU) and estimate the Conditional Average Treatment Effect (CATE).
+
+The dataset contains the following information:
+
+Demographic and Physical Data: Age, gender, race, weight (kg), height (cm), BMI.
+
+Timings: Admission time (intime), sepsis onset (sepsis_time), time zero (t0_time), first diuretic administration (first_diur_time).
+
+Vital Signs (at baseline): Heart rate (hr), respiratory rate (rr), oxygen saturation (spo2), temperature (temp_c), systolic blood pressure (sbp), mean arterial pressure (map), Glasgow Coma Scale (gcs).
+
+Laboratory Results: Creatinine, BUN, sodium, potassium, chloride, bicarbonate, glucose, hemoglobin, platelets, white blood cell count (wbc), INR, PTT, lactate, pH, pO2, pCO2, FiO2.
+
+Interventions and Treatments: Mechanical ventilation (vent_active_at_t0), vasopressor use (vaso_active_at_t0, vaso_any_baseline, vaso_max_rate_baseline), early treatment (treat_early).
+
+Renal Outcomes: Urinary output (uo_mlkghr_6hr, urineoutput_6hr).
+
+Clinical Outcomes: 28-day mortality (y_28d_mort_inhosp), hospital mortality (y_hosp_mort).
+
+Patient-specific data:
+{row_data}
+
+Based on these specific clinical characteristics, what is the expected heterogeneous effect of early treatment ("treat_early") on the patient's survival (CATE)?
+
+Respond exclusively with a continuous numerical value between -1.0 (extremely negative impact of treatment for this specific patient) and 1.0 (extremely positive and life-saving impact). Do not add any text or explanation.
