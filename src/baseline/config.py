@@ -166,7 +166,7 @@ DIUR_V1 = BaselineConfig(
     outcome_col="y_28d_mort_inhosp",
     drop_cols=["intime", "t0_time","sepsis_time", "exposure_end", "treat_early", "y_28d_mort_inhosp",
                 "y_hosp_mort", "dischtime", "deathtime", "stay_id", "subject_id", "hadm_id",
-                 "glucose", "hemoglobin", "platelets"],
+                 "glucose", "hemoglobin", "platelets", "first_diur_time"],
     ps_clip=(0.01, 0.99),
     weight_trim_quantiles=(0.01, 0.99),
     out_dir="artifacts/cate/diur_v1",
@@ -192,3 +192,20 @@ AIDS_V1 = BaselineConfig(
     n_folds=5,
     outcome_nice_name="AIDS Progression"
 )
+
+AIDS_V1_BIASED =  BaselineConfig(
+    outcome_nice_name = "Biased AIDS Progression",
+    data_path = "data/analytic/aids/aids_biased.parquet",
+    id_col="id",
+    subject_col="id",
+    treatment_col="treat",
+    outcome_col="label",
+    drop_cols=["time", "trt", "treat", "id"],
+    ps_clip=(0.01, 0.99),
+    weight_trim_quantiles=(0.01, 0.99),
+    out_dir="artifacts/cate/aids_v1_biased",
+    tau_direction="lte",
+    policy="tau_lt_0",
+    n_folds=5,
+)
+
