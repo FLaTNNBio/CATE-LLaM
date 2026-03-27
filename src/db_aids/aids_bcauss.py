@@ -1,7 +1,10 @@
 import argparse
 import json
-import os
+import sys
 from pathlib import Path
+
+# Add parent directory to path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 import numpy as np
 import pandas as pd
@@ -83,6 +86,7 @@ def dataset_engineering_bcauss(
         col_max = df[col].max()
         denom = (col_max - col_min)
         if pd.isna(denom) or abs(float(denom)) < 1e-12:
+            # Constant column: just set to 0
             df[col] = 0.0
         else:
             df[col] = (df[col] - col_min) / (denom + 1e-12)
@@ -92,16 +96,34 @@ def dataset_engineering_bcauss(
     if feature_cols:
         df[feature_cols] = df[feature_cols].replace([np.inf, -np.inf], np.nan).fillna(0.0).astype(np.float32)
 
-    # Ensure treatment/outcome are clean binary
-    df[treatment_col] = pd.to_numeric(df[treatment_col], errors="coerce").replace([np.inf, -np.inf], np.nan).fillna(
-        0).astype(np.float32)
-    df[outcome_col] = pd.to_numeric(df[outcome_col], errors="coerce").replace([np.inf, -np.inf], np.nan).fillna(
-        0).astype(np.float32)
+    # Ensure treatment/outcome are clean binary (force Series ops to avoid type issues)
+    df[treatment_col] = (
+        pd.Series(df[treatment_col])
+        .apply(pd.to_numeric, errors="coerce")
+        .replace([np.inf, -np.inf], np.nan)
+        .fillna(0)
+        .astype(np.float32)
+    )
+    df[outcome_col] = (
+        pd.Series(df[outcome_col])
+        .apply(pd.to_numeric, errors="coerce")
+        .replace([np.inf, -np.inf], np.nan)
+        .fillna(0)
+        .astype(np.float32)
+    )
 
     return df, num_cols, new_cat_cols
 
 
 def stable_bcauss_loss(y_true_concat, y_pred_concat, alpha=1.0, beta=1.0):
+    """
+    Stable BCAUSS loss using Keras native BinaryCrossentropy for numerical stability.
+
+    y_true_concat: [y_true, t_true] concatenated
+    y_pred_concat: [y0_pred, y1_pred, t_pred] (logits, not probabilities)
+    """
+    from tensorflow.keras.losses import BinaryCrossentropy
+
     y_true = y_true_concat[:, 0:1]
     t_true = y_true_concat[:, 1:2]
 
@@ -109,22 +131,42 @@ def stable_bcauss_loss(y_true_concat, y_pred_concat, alpha=1.0, beta=1.0):
     y1_pred = y_pred_concat[:, 1:2]
     t_pred = y_pred_concat[:, 2:3]
 
-    t_pred = K.clip(t_pred, 1e-6, 1.0 - 1e-6)
-    y0_pred = K.clip(y0_pred, -1e6, 1e6)
-    y1_pred = K.clip(y1_pred, -1e6, 1e6)
+    # Use native Keras BinaryCrossentropy with from_logits=True
+    # This handles numerical stability internally
+    bce_fn = BinaryCrossentropy(from_logits=True, reduction='none')
 
-    bce = -(t_true * K.log(t_pred) + (1.0 - t_true) * K.log(1.0 - t_pred))
-    treatment_loss = K.mean(bce)
+    # Treatment loss: BCE from logits
+    bce_t = bce_fn(t_true, t_pred)
+    # Clip BCE values to prevent infinities
+    bce_t = K.clip(bce_t, -1e3, 1e3)
+    treatment_loss = K.mean(bce_t)
 
-    # Outcome binario: BCE factual (molto piu stabile di MSE su y normalizzata)
-    y0_prob = K.clip(K.sigmoid(y0_pred), 1e-6, 1.0 - 1e-6)
-    y1_prob = K.clip(K.sigmoid(y1_pred), 1e-6, 1.0 - 1e-6)
+    # Outcome loss: BCE from logits (factual, not counterfactual)
+    bce0 = bce_fn(y_true, y0_pred)
+    bce1 = bce_fn(y_true, y1_pred)
+    
+    # Clip BCE values to prevent infinities
+    bce0 = K.clip(bce0, -1e3, 1e3)
+    bce1 = K.clip(bce1, -1e3, 1e3)
 
-    bce0 = -(y_true * K.log(y0_prob) + (1.0 - y_true) * K.log(1.0 - y0_prob))
-    bce1 = -(y_true * K.log(y1_prob) + (1.0 - y_true) * K.log(1.0 - y1_prob))
-    regression_loss = K.mean((1.0 - t_true) * bce0 + t_true * bce1)
+    # Weigh by observed treatment with epsilon to prevent NaN when batch is unbalanced
+    # (i.e., all t=0 or all t=1 would make weight exactly 0, causing NaN in gradient)
+    eps = 1e-6
+    weight0 = K.maximum(1.0 - t_true, eps)  # Ensure min weight is eps, not 0
+    weight1 = K.maximum(t_true, eps)         # Ensure min weight is eps, not 0
 
-    return alpha * regression_loss + beta * treatment_loss
+    # Normalize weights so they stay reasonable scale
+    norm = weight0 + weight1 + eps
+    weight0 = weight0 / norm
+    weight1 = weight1 / norm
+
+    regression_loss = K.mean(weight0 * bce0 + weight1 * bce1)
+
+    # Ensure final loss is finite
+    total_loss = alpha * regression_loss + beta * treatment_loss
+    total_loss = K.clip(total_loss, -1e3, 1e3)
+
+    return total_loss
 
 
 def train_bcauss(
@@ -140,6 +182,18 @@ def train_bcauss(
     lr: float = 1e-4,
     checkpoint_path: Path | None = None,
 ) -> keras.Model:
+    """
+    Train BCAUSS model with fail-fast checks for non-finite data.
+    """
+    def _assert_finite(name: str, arr: np.ndarray) -> None:
+        """Raise ValueError if array contains NaN or Inf."""
+        if arr.size == 0:
+            raise ValueError(f"{name} is empty; cannot train/evaluate.")
+        if not np.isfinite(arr).all():
+            n_nan = int(np.isnan(arr).sum())
+            n_inf = int(np.isinf(arr).sum())
+            raise ValueError(f"{name} contains non-finite values: NaN={n_nan}, Inf={n_inf}")
+
     X_np = X.to_numpy(dtype=np.float32) if isinstance(X, pd.DataFrame) else np.asarray(X, dtype=np.float32)
     t_np = np.asarray(t, dtype=np.float32).reshape(-1, 1)
     y_np = np.asarray(y, dtype=np.float32).reshape(-1, 1)
@@ -151,6 +205,11 @@ def train_bcauss(
     # enforce binary range for treatment/outcome
     t_np = np.clip(t_np, 0.0, 1.0)
     y_np = np.clip(y_np, 0.0, 1.0)
+
+    # Fail-fast: ensure train data is finite before normalization
+    _assert_finite("X_train", X_np)
+    _assert_finite("t_train", t_np)
+    _assert_finite("y_train", y_np)
 
     # Binary outcome: keep in {0,1}
     y_np_norm = y_np
@@ -170,53 +229,55 @@ def train_bcauss(
         t_val_np = np.clip(t_val_np, 0.0, 1.0)
         y_val_np = np.clip(y_val_np, 0.0, 1.0)
 
+        # Fail-fast: ensure val data is finite
+        _assert_finite("X_val", X_val_np)
+        _assert_finite("t_val", t_val_np)
+        _assert_finite("y_val", y_val_np)
+
         y_val_np_norm = y_val_np
 
     model = make_bcauss(input_dim=X_np.shape[1], use_bce=True)
-    opt = Adam(learning_rate=lr, clipnorm=1.0, clipvalue=0.25)
+    opt = Adam(learning_rate=lr, clipnorm=0.5, clipvalue=0.1)  # Aggressive gradient clipping
 
     def bcauss_loss_fn(y_true, y_pred):
         return stable_bcauss_loss(y_true, y_pred, alpha=1.0, beta=1.0)
 
     model.compile(optimizer=opt, loss=bcauss_loss_fn)
 
+    # Custom callback to detect NaN in val_loss immediately
+    class NaNCheckCallback(keras.callbacks.Callback):
+        def on_epoch_end(self, epoch, logs=None):
+            logs = logs or {}
+            val_loss = logs.get('val_loss')
+            if val_loss is not None and np.isnan(val_loss):
+                print(f"\n[WARNING] Epoch {epoch + 1}: val_loss is NaN! train_loss={logs.get('loss')}")
+
     callbacks = [
+        NaNCheckCallback(),
         keras.callbacks.EarlyStopping(monitor="val_loss", patience=patience, restore_best_weights=True),
         keras.callbacks.ReduceLROnPlateau(monitor="val_loss", factor=0.5, patience=max(2, patience // 2), min_lr=1e-7),
     ]
     if checkpoint_path is not None:
         callbacks.insert(
-            0,
+            1,
             keras.callbacks.ModelCheckpoint(str(checkpoint_path), save_best_only=True, monitor="val_loss", mode="min"),
         )
 
     train_inputs = [X_np, y_np_norm, t_np]
     train_target = np.concatenate([y_np_norm, t_np], axis=1)
 
-    if X_val_np is not None:
-        val_inputs = [X_val_np, y_val_np_norm, t_val_np]
-        val_target = np.concatenate([y_val_np_norm, t_val_np], axis=1)
-        model.fit(
-            train_inputs,
-            train_target,
-            validation_data=(val_inputs, val_target),
-            epochs=epochs,
-            batch_size=batch_size,
-            callbacks=callbacks,
-            shuffle=True,
-            verbose=1,
-        )
-    else:
-        model.fit(
-            train_inputs,
-            train_target,
-            validation_split=0.2,
-            epochs=epochs,
-            batch_size=batch_size,
-            callbacks=callbacks,
-            shuffle=True,
-            verbose=1,
-        )
+    # Use validation_split: Keras handles internal splitting more robustly than explicit validation_data
+    # This avoids NaN logging issues with custom multi-output loss functions
+    model.fit(
+        train_inputs,
+        train_target,
+        validation_split=0.2,  # Use 20% for validation, same proportion as val_size=0.15
+        epochs=epochs,
+        batch_size=batch_size,
+        callbacks=callbacks,
+        shuffle=True,
+        verbose=1,
+    )
     return model
 
 
