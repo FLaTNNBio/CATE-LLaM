@@ -1,6 +1,7 @@
 # python
 import argparse
-import os
+import os, json
+from bdb import effective
 
 from tensorflow import keras
 import pandas as pd
@@ -23,7 +24,22 @@ def dataset_engineering_bcauss(
     outcome_col: str,
     drop_cols: list[str] = None,
 ) -> tuple[pd.DataFrame, list[str], list[str]]:
+    """
+    Engineer dataset for BCAUSS training with aggressive data cleaning.
+    
+    Key steps:
+    1. Identify and coerce numeric columns
+    2. Convert treatment/outcome to numeric
+    3. One-hot encode categorical columns
+    4. Impute missing values with stratified means
+    5. Min-max scale with inf guard
+    6. Final comprehensive NaN/Inf cleanup
+    """
     drop_cols = drop_cols or []
+    
+    # Step 0: Make a copy to avoid modif original (?)
+    df = df.copy()
+
     num_cols, cat_cols, dropped = default_feature_columns(
         df,
         id_col=id_col,
@@ -32,64 +48,172 @@ def dataset_engineering_bcauss(
         outcome_col=outcome_col,
         drop_cols=drop_cols,
     )
+    
+    # Step 1: Coerce numeric columns to float32, keep non-convertible as-is for later processing
     df[num_cols] = coerce_numeric_columns(df, num_cols)
+    
+    # Step 2: Convert treatment and outcome to numeric FIRST (before any operations)
+    # This is critical: convert to numeric, replace inf with nan, fill nan with 0/1 default
+    df[treatment_col] = pd.to_numeric(df[treatment_col], errors="coerce")
+    df[outcome_col] = pd.to_numeric(df[outcome_col], errors="coerce")
+    
+    # Replace inf with NaN temporarily for treatment/outcome
+    df[treatment_col] = df[treatment_col].replace([np.inf, -np.inf], np.nan)
+    df[outcome_col] = df[outcome_col].replace([np.inf, -np.inf], np.nan)
+    
+    # Fill NaN in treatment/outcome: use mode/0 as fallback
+    for col in [treatment_col, outcome_col]:
+        if df[col].isna().any():
+            fill_value = df[col].mode()
+            if len(fill_value) > 0:
+                df[col] = df[col].fillna(fill_value[0])
+            else:
+                df[col] = df[col].fillna(0)
+    
+    # Ensure treatment/outcome are int
+    df[treatment_col] = df[treatment_col].astype(int)
+    df[outcome_col] = df[outcome_col].astype(int)
+    
+    # Step 3: Handle categorical columns - convert to numeric first, then OHE
+    # This prevents OHE from failing on weird values
+    cat_to_encode = [
+        c for c in cat_cols 
+        if c not in {id_col, subject_col, treatment_col, outcome_col}
+    ]
 
-    # One-hot encode categorical columns
-    # Map known treatment labels to numeric (ensure HFNC=1, NIV=0)
-    if df[treatment_col].dtype == object or df[treatment_col].dtype == "O":
-        mapping = {"HFNC": 1, "NIV": 0}
-        if df[treatment_col].isin(mapping.keys()).any():
-            df[treatment_col] = df[treatment_col].map(mapping)
-    # Only encode categorical columns that are not identifier/treatment/outcome
-    cat_to_encode = [c for c in cat_cols if c not in {id_col, subject_col, treatment_col, outcome_col}]
+    #
     if cat_to_encode:
-        df = pd.get_dummies(df, columns=cat_to_encode, drop_first=True)
-    # Update cat_cols to reflect new one-hot encoded columns (everything that's not numeric or id/treatment/outcome)
-    new_cat_cols = [col for col in df.columns if
-                    col not in num_cols + [id_col, subject_col, treatment_col, outcome_col]]
-    # Ensure new categorical columns are numeric
+        # Convert categorical columns to string, then apply mapping if available
+        for col in cat_to_encode:
+            # Try mapping (e.g., HFNC=1, NIV=0)
+            if col == treatment_col:
+                mapping = {"HFNC": 1, "NIV": 0}
+                df[col] = df[col].map(mapping).fillna(df[col])
+            else:
+                # For other categoricals, just convert to string then one-hot
+                df[col] = df[col].astype(str)
+        
+        # One-hot encode
+        df = pd.get_dummies(df, columns=cat_to_encode, drop_first=True, dummy_na=False)
+    
+    # Step 4: Identify new columns after OHE
+    new_cat_cols = [
+        col for col in df.columns 
+        if col not in num_cols + [id_col, subject_col, treatment_col, outcome_col]
+    ]
+    
+    # Ensure new categorical columns are numeric and finite
     if new_cat_cols:
-        df[new_cat_cols] = df[new_cat_cols].apply(pd.to_numeric, errors='coerce').fillna(0).astype(np.float32)
+        for col in new_cat_cols:
+            df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0).astype(np.float32)
+    
     cat_cols = new_cat_cols
-
-    # Data Augmentation for N/A
-    # Stratify by treatment and outcome and fill N/A with mean of that group (plus small noise)
+    
+    # Step 5: Impute missing values in numeric columns
+    # Use stratified mean by (treatment, outcome) group
     for col in num_cols:
-        if df[col].isna().sum() > 0:
-            for t_val in df[treatment_col].unique():
-                for y_val in df[outcome_col].unique():
+        if df[col].isna().any():
+            # First pass: fill with stratified group mean
+            for t_val in sorted(df[treatment_col].dropna().unique()):
+                for y_val in sorted(df[outcome_col].dropna().unique()):
                     mask = (df[treatment_col] == t_val) & (df[outcome_col] == y_val)
                     na_mask = mask & df[col].isna()
+                    
                     if not na_mask.any():
                         continue
-                    mean_val = df.loc[mask, col].mean()
-                    # fallback to global column mean if group mean is NaN, then 0.0 if still NaN
-                    if pd.isna(mean_val):
-                        mean_val = df[col].mean()
-                        if pd.isna(mean_val):
-                            mean_val = 0.0
-                    noise = np.random.normal(0, 1e-3, size=na_mask.sum())
-                    df.loc[na_mask, col] = mean_val + noise
-
-    # MinMax Scale of numeric columns to [0,1] with guard for constant columns
+                    
+                    # Get group mean
+                    group_mean = df.loc[mask, col].mean()
+                    
+                    # If group mean is NaN (all NaN in group), use global mean
+                    if pd.isna(group_mean):
+                        group_mean = df[col].mean()
+                    
+                    # If still NaN (entire column is NaN), use 0
+                    if pd.isna(group_mean):
+                        group_mean = 0.0
+                    
+                    # Fill with mean + small noise
+                    noise = np.random.normal(0, 1e-4, size=int(na_mask.sum()))
+                    df.loc[na_mask, col] = group_mean + noise
+            
+            # Second pass: fill any remaining NaN with global mean or 0
+            remaining_na = df[col].isna().sum()
+            if remaining_na > 0:
+                fill_val = df[col].mean()
+                fill_val = fill_val if not pd.isna(fill_val) else 0.0
+                df[col] = df[col].fillna(fill_val)
+    
+    # Step 6: Replace inf/nan with 0 in all numeric columns (safety net)
+    for col in num_cols + cat_cols:
+        if col in df.columns:
+            df[col] = df[col].replace([np.inf, -np.inf], np.nan)
+            df[col] = df[col].fillna(0.0)
+    
+    # Step 7: Min-max scale numeric columns to [0,1]
+    # CRITICAL: Check for inf BEFORE scaling
     for col in num_cols:
-        min_val = df[col].min()
-        max_val = df[col].max()
-        denom = max_val - min_val
-        if pd.isna(denom) or abs(float(denom)) < 1e-12:
+        if col not in df.columns:
+            continue
+        
+        # Ensure no inf before scaling
+        df[col] = df[col].replace([np.inf, -np.inf], 0.0)
+        
+        col_min = df[col].min()
+        col_max = df[col].max()
+        
+        # Safety: if min/max are inf or NaN, set column to 0
+        if pd.isna(col_min) or pd.isna(col_max) or np.isinf(col_min) or np.isinf(col_max):
+            df[col] = 0.0
+            continue
+        
+        denom = col_max - col_min
+        
+        # Guard for constant columns
+        if abs(float(denom)) < 1e-12:
             df[col] = 0.0
         else:
-            df[col] = (df[col] - min_val) / (denom + 1e-12)
-
-    # Final safety pass: no NaN/Inf in covariates before split/training
+            df[col] = (df[col] - col_min) / (denom + 1e-12)
+            # Clip to [0, 1] in case of floating point errors
+            df[col] = np.clip(df[col], 0.0, 1.0)
+    
+    # Step 8: Final comprehensive cleanup - remove ANY inf/nan from features
     feature_cols = [c for c in num_cols + cat_cols if c in df.columns]
-    if feature_cols:
-        df[feature_cols] = df[feature_cols].replace([np.inf, -np.inf], np.nan).fillna(0.0).astype(np.float32)
-
-    # Enforce finite treatment/outcome as well
-    df[treatment_col] = pd.to_numeric(df[treatment_col], errors="coerce").replace([np.inf, -np.inf], np.nan).fillna(0)
-    df[outcome_col] = pd.to_numeric(df[outcome_col], errors="coerce").replace([np.inf, -np.inf], np.nan).fillna(0)
-
+    
+    for col in feature_cols:
+        # Replace inf first
+        df[col] = df[col].replace([np.inf, -np.inf], np.nan)
+        # Fill NaN
+        df[col] = df[col].fillna(0.0)
+        # Convert to float32
+        df[col] = df[col].astype(np.float32)
+        
+        # Final check: if still any non-finite, set to 0
+        non_finite = ~np.isfinite(df[col].values)
+        if non_finite.any():
+            df.loc[non_finite, col] = 0.0
+    
+    # Step 9: Ensure treatment/outcome are clean binary and finite
+    df[treatment_col] = df[treatment_col].astype(int)
+    df[outcome_col] = df[outcome_col].astype(int)
+    
+    # Step 10: CRITICAL - drop any columns that are not: features, id, subject, treatment, outcome
+    # This prevents leakage columns from being passed to the model
+    valid_cols = set(feature_cols + [id_col, subject_col, treatment_col, outcome_col])
+    cols_to_drop = [c for c in df.columns if c not in valid_cols]
+    if cols_to_drop:
+        print(f"[INFO] Dropping {len(cols_to_drop)} non-feature columns: {cols_to_drop[:5]}{'...' if len(cols_to_drop) > 5 else ''}")
+        df = df.drop(columns=cols_to_drop)
+    
+    # Final validation: ensure NO inf/nan anywhere
+    all_feature_cols = feature_cols + [treatment_col, outcome_col]
+    for col in all_feature_cols:
+        if col in df.columns:
+            assert np.isfinite(df[col]).all(), f"Column {col} still has non-finite values!"
+    
+    print(f"[INFO] Dataset engineering complete: {df.shape[0]} rows × {df.shape[1]} cols")
+    print(f"[INFO] Feature columns: {len(feature_cols)} (numeric: {len(num_cols)}, categorical: {len(cat_cols)})")
+    
     return df, num_cols, cat_cols
 
 # python
@@ -159,7 +283,7 @@ def train_bcauss(
     epochs: int = 100,
     batch_size: int = 32,
     patience: int = 10,
-    lr: float = 1e-5,
+    lr: float = 5e-5,
     checkpoint_path: Path = None,
 ) -> keras.Model:
     # --- coerce types to numeric numpy arrays ---
@@ -204,7 +328,7 @@ def train_bcauss(
     model = make_bcauss(input_dim=input_dim, use_bce=True)
 
     # Use lower learning rate with aggressive gradient clipping
-    opt = Adam(learning_rate=lr if lr else 1e-5, clipnorm=0.5, clipvalue=0.1)
+    opt = Adam(learning_rate=lr if lr else 5e-5, clipnorm=0.5, clipvalue=0.1)
     print("Compiling BCAUSS model with stable loss...")
 
     # Custom loss wrapper
@@ -448,6 +572,7 @@ if __name__ == "__main__":
     arg_parser.add_argument("--batch-size", type=int, default=32)
     arg_parser.add_argument("--patience", type=int, default=10)
     arg_parser.add_argument("--lr", type=float, default=None)
+    arg_parser.add_argument("--save-plots", type=bool, default=True)
 
     args = arg_parser.parse_args()
     cfg = get_config(args.dataset)
@@ -465,8 +590,15 @@ if __name__ == "__main__":
 
     feat_cols = num_cols + cat_cols
 
-    drop_also = ["intime", "t0_time", "hadm_id", "icustay_id", "subject_id", "stay_id"]
+    drop_also = ["intime", "t0_time", "hadm_id", "icustay_id", "subject_id", "stay_id", "first_diur_time"]
+    also_dropped = [c for c in feat_cols if c in drop_also]
     feat_cols = [c for c in feat_cols if c not in drop_also]
+    feat_cols = [c for c in feat_cols if c not in cfg.drop_cols]
+
+    # Safety: ensure feat_cols only contains columns that actually exist in df after engineering
+    feat_cols = [c for c in feat_cols if c in df.columns]
+
+    effective_drop = cfg.drop_cols + also_dropped
 
     splits = split_by_subject(
         df,
@@ -484,11 +616,17 @@ if __name__ == "__main__":
     T = df[cfg.treatment_col].astype(int).values
     Y = df[cfg.outcome_col].astype(int).values
 
+
+
     print(f"Data shape after engineering: {X.shape}")
 
     with pd.option_context('display.max_columns', None):
         print("Sample of processed data:")
         print(X.head(3))
+        print("\n ==== X Info After data engineering ====")
+        print(X.info())
+        print("\n ==== End X Info After data engineering ====")
+
 
     X_tr, T_tr, Y_tr = X.iloc[tr_idx], T[tr_idx], Y[tr_idx]
     X_te, T_te, Y_te = X.iloc[te_idx], T[te_idx], Y[te_idx]
@@ -597,3 +735,30 @@ if __name__ == "__main__":
     print(f"  Treat rate: {best_row['treat_rate']:.2%}")
     print(
         f"  Policy value: {best_row['value_dr']:.4f} [{best_row['value_boot_ci_lo']:.4f}, {best_row['value_boot_ci_hi']:.4f}]")
+
+    summary = {
+        "dataset": args.dataset,
+        "n_train": int(len(tr_idx)),
+        "n_val": int(len(val_idx) if val_idx is not None else 0),
+        "n_test": int(len(te_idx)),
+        "outcome_semantics": "1=failure, 0=censoring",
+        "cate_test_mean": float(np.mean(cate_estimates)),
+        "cate_test_std": float(np.std(cate_estimates)),
+        "cate_test_p05": float(np.percentile(cate_estimates, 5)),
+        "cate_test_p50": float(np.percentile(cate_estimates, 50)),
+        "cate_test_p95": float(np.percentile(cate_estimates, 95)),
+        "dropped_columns_for_leakage": effective_drop,
+        "used_feature_count": int(len(feat_cols)),
+    }
+    out_dir = Path(OUT_DIR)
+    with open(out_dir / "bcauss_summary.json", "w", encoding="ascii") as f:
+        json.dump(summary, f, indent=2)
+
+    print(f"[OK] Saved: {out_dir / 'cate_estimates.parquet'}")
+    print(f"[OK] Saved: {out_dir / 'bcauss_summary.json'}")
+    print(f"[INFO] Features used: {len(feat_cols)}")
+
+    if(args.save_plots):
+        # Run main in plot_bcauss to save plots
+        # run as module to get all arguments parsed correctly:
+        os.system(f"python -m src.cate.scripts.plot_bcauss --dataset {args.dataset}")
