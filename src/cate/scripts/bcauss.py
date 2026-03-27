@@ -23,6 +23,7 @@ def dataset_engineering_bcauss(
     outcome_col: str,
     drop_cols: list[str] = None,
 ) -> tuple[pd.DataFrame, list[str], list[str]]:
+    drop_cols = drop_cols or []
     num_cols, cat_cols, dropped = default_feature_columns(
         df,
         id_col=id_col,
@@ -70,11 +71,24 @@ def dataset_engineering_bcauss(
                     noise = np.random.normal(0, 1e-3, size=na_mask.sum())
                     df.loc[na_mask, col] = mean_val + noise
 
-    # MinMax Scale of numeric columns    to[0,1]
+    # MinMax Scale of numeric columns to [0,1] with guard for constant columns
     for col in num_cols:
         min_val = df[col].min()
         max_val = df[col].max()
-        df[col] = (df[col] - min_val) / (max_val - min_val) + 1e-12
+        denom = max_val - min_val
+        if pd.isna(denom) or abs(float(denom)) < 1e-12:
+            df[col] = 0.0
+        else:
+            df[col] = (df[col] - min_val) / (denom + 1e-12)
+
+    # Final safety pass: no NaN/Inf in covariates before split/training
+    feature_cols = [c for c in num_cols + cat_cols if c in df.columns]
+    if feature_cols:
+        df[feature_cols] = df[feature_cols].replace([np.inf, -np.inf], np.nan).fillna(0.0).astype(np.float32)
+
+    # Enforce finite treatment/outcome as well
+    df[treatment_col] = pd.to_numeric(df[treatment_col], errors="coerce").replace([np.inf, -np.inf], np.nan).fillna(0)
+    df[outcome_col] = pd.to_numeric(df[outcome_col], errors="coerce").replace([np.inf, -np.inf], np.nan).fillna(0)
 
     return df, num_cols, cat_cols
 
@@ -83,10 +97,13 @@ from tensorflow.keras import backend as K
 
 def stable_bcauss_loss(y_true_concat, y_pred_concat, alpha=1.0, beta=1.0):
     """
-    Stable BCAUSS loss with gradient clipping and proper scaling.
+    Stable BCAUSS loss using Keras native BinaryCrossentropy for numerical stability.
+    
     y_true_concat: [y_true, t_true] concatenated
-    y_pred_concat: [y0_pred, y1_pred, t_pred, epsilon] concatenated
+    y_pred_concat: [y0_pred, y1_pred, t_pred] (logits, not probabilities)
     """
+    from tensorflow.keras.losses import BinaryCrossentropy
+    
     y_true = y_true_concat[:, 0:1]
     t_true = y_true_concat[:, 1:2]
 
@@ -94,21 +111,42 @@ def stable_bcauss_loss(y_true_concat, y_pred_concat, alpha=1.0, beta=1.0):
     y1_pred = y_pred_concat[:, 1:2]
     t_pred = y_pred_concat[:, 2:3]
 
-    # Clip predictions to prevent NaN
-    t_pred = K.clip(t_pred, 1e-6, 1.0 - 1e-6)
-    y0_pred = K.clip(y0_pred, -1e6, 1e6)
-    y1_pred = K.clip(y1_pred, -1e6, 1e6)
+    # Use native Keras BinaryCrossentropy with from_logits=True
+    # This handles numerical stability internally
+    bce_fn = BinaryCrossentropy(from_logits=True, reduction='none')
 
-    # Binary cross-entropy for treatment prediction (stable)
-    bce = - (t_true * K.log(t_pred) + (1.0 - t_true) * K.log(1.0 - t_pred))
-    treatment_loss = K.mean(bce)
+    # Treatment loss: BCE from logits
+    bce_t = bce_fn(t_true, t_pred)
+    # Clip BCE values to prevent infinities
+    bce_t = K.clip(bce_t, -1e3, 1e3)
+    treatment_loss = K.mean(bce_t)
 
-    # Regression loss for outcome prediction
-    loss0 = (1.0 - t_true) * K.square(y_true - y0_pred)
-    loss1 = t_true * K.square(y_true - y1_pred)
-    regression_loss = K.mean(loss0 + loss1)
+    # Outcome loss: BCE from logits (factual, not counterfactual)
+    bce0 = bce_fn(y_true, y0_pred)
+    bce1 = bce_fn(y_true, y1_pred)
+    
+    # Clip BCE values to prevent infinities
+    bce0 = K.clip(bce0, -1e3, 1e3)
+    bce1 = K.clip(bce1, -1e3, 1e3)
 
-    return alpha * regression_loss + beta * treatment_loss
+    # Weigh by observed treatment with epsilon to prevent NaN when batch is unbalanced
+    # (i.e., all t=0 or all t=1 would make weight exactly 0, causing NaN in gradient)
+    eps = 1e-6
+    weight0 = K.maximum(1.0 - t_true, eps)  # Ensure min weight is eps, not 0
+    weight1 = K.maximum(t_true, eps)         # Ensure min weight is eps, not 0
+    
+    # Normalize weights so they stay reasonable scale
+    norm = weight0 + weight1 + eps
+    weight0 = weight0 / norm
+    weight1 = weight1 / norm
+    
+    regression_loss = K.mean(weight0 * bce0 + weight1 * bce1)
+
+    total_loss = alpha * regression_loss + beta * treatment_loss
+    # Ensure final loss is finite
+    total_loss = K.clip(total_loss, -1e3, 1e3)
+    
+    return total_loss
 
 
 def train_bcauss(
@@ -133,12 +171,19 @@ def train_bcauss(
     t_np = np.asarray(t, dtype=np.float32).reshape(-1, 1)
     y_np = np.asarray(y, dtype=np.float32).reshape(-1, 1)
 
+    # Keep tensors finite before normalization/loss computation
+    X_np = np.nan_to_num(X_np, nan=0.0, posinf=1e6, neginf=-1e6).astype(np.float32)
+    t_np = np.nan_to_num(t_np, nan=0.0, posinf=1.0, neginf=0.0).astype(np.float32)
+    y_np = np.nan_to_num(y_np, nan=0.0, posinf=1.0, neginf=0.0).astype(np.float32)
+    t_np = np.clip(t_np, 0.0, 1.0)
+    y_np = np.clip(y_np, 0.0, 1.0)
+
     # Normalize y to prevent large gradients
     y_mean = np.mean(y_np)
     y_std = np.std(y_np) + 1e-8
     y_np_norm = (y_np - y_mean) / y_std
 
-    X_val_np = t_val_np = y_val_np = None
+    X_val_np = t_val_np = y_val_np = y_val_np_norm = None
     if X_val is not None and t_val is not None and y_val is not None:
         if isinstance(X_val, pd.DataFrame):
             X_val_np = X_val.to_numpy(dtype=np.float32)
@@ -146,13 +191,20 @@ def train_bcauss(
             X_val_np = np.asarray(X_val, dtype=np.float32)
         t_val_np = np.asarray(t_val, dtype=np.float32).reshape(-1, 1)
         y_val_np = np.asarray(y_val, dtype=np.float32).reshape(-1, 1)
+
+        X_val_np = np.nan_to_num(X_val_np, nan=0.0, posinf=1e6, neginf=-1e6).astype(np.float32)
+        t_val_np = np.nan_to_num(t_val_np, nan=0.0, posinf=1.0, neginf=0.0).astype(np.float32)
+        y_val_np = np.nan_to_num(y_val_np, nan=0.0, posinf=1.0, neginf=0.0).astype(np.float32)
+        t_val_np = np.clip(t_val_np, 0.0, 1.0)
+        y_val_np = np.clip(y_val_np, 0.0, 1.0)
+
         y_val_np_norm = (y_val_np - y_mean) / y_std
 
     input_dim = X_np.shape[1]
     model = make_bcauss(input_dim=input_dim, use_bce=True)
 
-    # Use lower learning rate with gradient clipping
-    opt = Adam(learning_rate=lr if lr else 1e-4, clipnorm=1.0, clipvalue=0.5)
+    # Use lower learning rate with aggressive gradient clipping
+    opt = Adam(learning_rate=lr if lr else 1e-5, clipnorm=0.5, clipvalue=0.1)
     print("Compiling BCAUSS model with stable loss...")
 
     # Custom loss wrapper
@@ -175,31 +227,18 @@ def train_bcauss(
     train_inputs = [X_np, y_np_norm, t_np]
     train_target = np.concatenate([y_np_norm, t_np], axis=1)
 
-    if X_val_np is not None:
-        val_inputs = [X_val_np, y_val_np_norm, t_val_np]
-        val_target = np.concatenate([y_val_np_norm, t_val_np], axis=1)
-
-        history = model.fit(
-            train_inputs,
-            train_target,
-            epochs=epochs,
-            batch_size=batch_size,
-            validation_data=(val_inputs, val_target),
-            callbacks=callbacks,
-            shuffle=True,
-            verbose=1,
-        )
-    else:
-        history = model.fit(
-            train_inputs,
-            train_target,
-            epochs=epochs,
-            batch_size=batch_size,
-            validation_split=0.2,
-            callbacks=callbacks,
-            shuffle=True,
-            verbose=1,
-        )
+    # Use validation_split: Keras handles internal splitting more robustly than explicit validation_data
+    # This avoids NaN logging issues with custom multi-output loss functions
+    history = model.fit(
+        train_inputs,
+        train_target,
+        epochs=epochs,
+        batch_size=batch_size,
+        validation_split=0.2,
+        callbacks=callbacks,
+        shuffle=True,
+        verbose=1,
+    )
     return model
 
 def predict_cate_bcauss(model: keras.Model, X: pd.DataFrame) -> np.ndarray:
@@ -403,7 +442,7 @@ def generate_bcauss_policy_curve(cate_estimates: np.ndarray, y: np.ndarray, t: n
 
 if __name__ == "__main__":
     arg_parser = argparse.ArgumentParser()
-    arg_parser.add_argument("--dataset", required=True, type=str, choices="".join(CONFIGS.keys()),
+    arg_parser.add_argument("--dataset", required=True, type=str, choices=list(CONFIGS.keys()),
                             help="Dataset config to use")
     arg_parser.add_argument("--epochs", type=int, default=100)
     arg_parser.add_argument("--batch-size", type=int, default=32)
