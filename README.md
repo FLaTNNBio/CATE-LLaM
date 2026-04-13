@@ -21,7 +21,7 @@ Particolare attenzione è dedicata al ruolo dei **bias strutturali** nei dati os
 - Selection bias
 - Mancanza di overlap tra gruppi
 
-👉 Come evidenziato nel lavoro, la qualità dell’inferenza causale dipende fortemente dalla qualità del dataset, più che dal modello utilizzato :contentReference[oaicite:0]{index=0}
+👉 Come evidenziato nel lavoro, la qualità dell’inferenza causale dipende fortemente dalla qualità del dataset, più che dal modello utilizzato.
 
 ---
 
@@ -37,7 +37,7 @@ Caratteristiche richieste per i dataset:
 - Outcome clinicamente significativo
 - Covariate pre-trattamento disponibili
 - Positivity (overlap tra gruppi)
-- Campione bilanciato e sufficientemente ampio :contentReference[oaicite:1]{index=1}
+- Campione bilanciato e sufficientemente ampio.
 
 ---
 
@@ -119,7 +119,7 @@ Una parte innovativa del progetto consiste nel valutare se i **Large Language Mo
 
 - Il progetto evidenzia come la **data quality sia il fattore dominante** nell'inferenza causale
 - I bias nei dati osservazionali possono compromettere drasticamente le stime
-- L’uso degli LLM in causal inference è ancora esplorativo
+- L’uso degli LLM in causal inference è ancora **esplorativo**
 
 ---
 
