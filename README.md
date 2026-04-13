@@ -94,16 +94,17 @@ Una parte innovativa del progetto consiste nel valutare se i **Large Language Mo
 ---
 
 ## 🛠️ Struttura del repository
+
+```
 .
-├── data/ # Dataset e preprocessing
-├── bias_tools/ # Tool per bias injection
-├── models/ # Modelli causali (DR-Learner, etc.)
-├── llm/ # Esperimenti con LLM
-├── utils/ # Funzioni di supporto
-├── clean_data.py # Dataset harmonization
+├── data/           # Dataset e preprocessing
+├── bias_tools/     # Tool per bias injection
+├── models/         # Modelli causali (DR-Learner, etc.)
+├── llm/            # Esperimenti con LLM
+├── utils/          # Funzioni di supporto
+├── clean_data.py   # Dataset harmonization
 └── README.md
-
-
+```
 ---
 
 ## ⚙️ Tecnologie utilizzate
